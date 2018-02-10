@@ -246,6 +246,40 @@ public:
 	}
 };
 
+template<typename T>
+class FUsageUniform
+{
+public:
+	void Init(GLuint hShader, const GLchar *name)
+	{
+		buffer.Init(hShader, name);
+	}
+
+	template<typename P1>
+	void Set(P1 p1) { lastbuffer = buffer; buffer.Set(p1); TrackChanges(); }
+
+	template<typename P1, typename P2>
+	void Set(P1 p1, P2 p2) { lastbuffer = buffer; buffer.Set(p1 ,p2); TrackChanges(); }
+
+	template<typename P1, typename P2, typename P3>
+	void Set(P1 p1, P2 p2, P3 p3) { lastbuffer = buffer; buffer.Set(p1, p2, p3); TrackChanges(); }
+
+	template<typename P1, typename P2, typename P3, typename P4>
+	void Set(P1 p1, P2 p2, P3 p3, P4 p4) { lastbuffer = buffer; buffer.Set(p1, p2, p3, p4); TrackChanges(); }
+
+	int ModifiedCount = 0;
+
+private:
+	void TrackChanges()
+	{
+		if (memcmp(&buffer, &lastbuffer, sizeof(T)) != 0)
+			ModifiedCount++;
+	}
+
+	T buffer;
+	T lastbuffer;
+};
+
 
 class FShader
 {
@@ -257,36 +291,66 @@ class FShader
 	unsigned int hFragProg;
 	FName mName;
 
-	FBufferedUniform1f muDesaturation;
-	FBufferedUniform1i muFogEnabled;
-	FBufferedUniform1i muPalLightLevels;
-	FBufferedUniform1f muGlobVis;
-	FBufferedUniform1i muTextureMode;
-	FBufferedUniform4f muCameraPos;
-	FBufferedUniform4f muLightParms;
-	FBufferedUniform2f muClipSplit;
-	FUniform1i muFixedColormap;
-	FUniform4f muColormapStart;
-	FUniform4f muColormapRange;
-	FBufferedUniform1i muLightIndex;
-	FBufferedUniformPE muFogColor;
-	FBufferedUniform4f muDynLightColor;
-	FBufferedUniformPE muObjectColor;
-	FBufferedUniformPE muObjectColor2;
-	FUniform4f muGlowBottomColor;
-	FUniform4f muGlowTopColor;
-	FUniform4f muGlowBottomPlane;
-	FUniform4f muGlowTopPlane;
-	FUniform4f muSplitBottomPlane;
-	FUniform4f muSplitTopPlane;
-	FUniform4f muClipLine;
-	FBufferedUniform1f muInterpolationFactor;
-	FBufferedUniform1f muClipHeight;
-	FBufferedUniform1f muClipHeightDirection;
-	FBufferedUniform1f muAlphaThreshold;
-	FBufferedUniform1i muViewHeight;
-	FBufferedUniform2f muSpecularMaterial;
-	FBufferedUniform1f muTimer;
+	FUsageUniform<FBufferedUniform4f> muCameraPos;
+	FUsageUniform<FBufferedUniform1i> muTextureMode;
+	FUsageUniform<FBufferedUniform1f> muClipHeight;
+	FUsageUniform<FBufferedUniform1f> muClipHeightDirection;
+	FUsageUniform<FBufferedUniform2f> muClipSplit;
+	FUsageUniform<FUniform4f> muClipLine;
+	FUsageUniform<FBufferedUniform1f> muAlphaThreshold;
+
+	// Colors
+	FUsageUniform<FBufferedUniformPE> muObjectColor;
+	FUsageUniform<FBufferedUniformPE> muObjectColor2;
+	FUsageUniform<FBufferedUniform4f> muDynLightColor;
+	FUsageUniform<FBufferedUniformPE> muFogColor;
+	FUsageUniform<FBufferedUniform1f> muDesaturation;
+	FUsageUniform<FBufferedUniform1f> muInterpolationFactor;
+
+	// Fixed colormap stuff
+	FUsageUniform<FUniform1i> muFixedColormap;
+	FUsageUniform<FUniform4f> muColormapStart;
+	FUsageUniform<FUniform4f> muColormapRange;
+
+	// Glowing walls stuff
+	FUsageUniform<FUniform4f> muGlowTopPlane;
+	FUsageUniform<FUniform4f> muGlowTopColor;
+	FUsageUniform<FUniform4f> muGlowBottomPlane;
+	FUsageUniform<FUniform4f> muGlowBottomColor;
+
+	FUsageUniform<FUniform4f> muSplitTopPlane;
+	FUsageUniform<FUniform4f> muSplitBottomPlane;
+
+	// Lighting + Fog
+	FUsageUniform<FBufferedUniform4f> muLightParms;
+	FUsageUniform<FBufferedUniform1i> muFogEnabled;
+	FUsageUniform<FBufferedUniform1i> muPalLightLevels;
+	FUsageUniform<FBufferedUniform1f> muGlobVis;
+
+	// dynamic lights
+	FUsageUniform<FBufferedUniform1i> muLightIndex;
+
+	// Software fuzz scaling
+	FUsageUniform<FBufferedUniform1i> muViewHeight;
+
+	// Blinn glossiness and specular level
+	FUsageUniform<FBufferedUniform2f> muSpecularMaterial;
+
+	// quad drawer stuff
+	// muQuadVertices
+	// muQuadTexCoords
+	// muQuadMode
+
+	// matrices
+	// mProjectionMatrix
+	// mViewMatrix
+	// mModelMatrix
+	// mNormalViewMatrix
+	// mNormalModelMatrix
+	// mTextureMatrix
+
+	// Timer data
+	FUsageUniform<FBufferedUniform1f> muTimer;
 	
 	int lights_index;
 	int projectionmatrix_index;
@@ -328,6 +392,7 @@ public:
 
 	void ApplyMatrices(VSMatrix *proj, VSMatrix *view, VSMatrix *norm);
 
+	static FString GetUsageStats();
 };
 
 //==========================================================================

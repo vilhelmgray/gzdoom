@@ -609,6 +609,72 @@ static const FEffectShader effectshaders[]=
 	{ "stencil", "shaders/glsl/main.vp", "shaders/glsl/stencil.fp", NULL, "#define SIMPLE\n#define NO_ALPHATEST\n" },
 };
 
+FString FShader::GetUsageStats()
+{
+	std::map<FString, int> uniforms;
+
+	for (int subshader = 0; subshader < FIRST_USER_SHADER; subshader++)
+	{
+		FShader *all[] =
+		{
+			GLRenderer->mShaderManager->Get(subshader, false, NORMAL_PASS),
+			GLRenderer->mShaderManager->Get(subshader, true, NORMAL_PASS),
+			GLRenderer->mShaderManager->Get(subshader, false, GBUFFER_PASS),
+			GLRenderer->mShaderManager->Get(subshader, true, GBUFFER_PASS)
+		};
+
+		for (FShader *shader : all)
+		{
+			if (!shader) continue;
+
+			uniforms["uDesaturation"] += shader->muDesaturation.ModifiedCount; shader->muDesaturation.ModifiedCount = 0;
+			uniforms["uFogEnabled"] += shader->muFogEnabled.ModifiedCount; shader->muFogEnabled.ModifiedCount = 0;
+			uniforms["uPalLightLevels"] += shader->muPalLightLevels.ModifiedCount; shader->muPalLightLevels.ModifiedCount = 0;
+			uniforms["uGlobVis"] += shader->muGlobVis.ModifiedCount; shader->muGlobVis.ModifiedCount = 0;
+			uniforms["uTextureMode"] += shader->muTextureMode.ModifiedCount; shader->muTextureMode.ModifiedCount = 0;
+			uniforms["uCameraPos"] += shader->muCameraPos.ModifiedCount; shader->muCameraPos.ModifiedCount = 0;
+			uniforms["uLightParms"] += shader->muLightParms.ModifiedCount; shader->muLightParms.ModifiedCount = 0;
+			uniforms["uClipSplit"] += shader->muClipSplit.ModifiedCount; shader->muClipSplit.ModifiedCount = 0;
+			uniforms["uFixedColormap"] += shader->muFixedColormap.ModifiedCount; shader->muFixedColormap.ModifiedCount = 0;
+			uniforms["uColormapStart"] += shader->muColormapStart.ModifiedCount; shader->muColormapStart.ModifiedCount = 0;
+			uniforms["uColormapRange"] += shader->muColormapRange.ModifiedCount; shader->muColormapRange.ModifiedCount = 0;
+			uniforms["uLightIndex"] += shader->muLightIndex.ModifiedCount; shader->muLightIndex.ModifiedCount = 0;
+			uniforms["uFogColor"] += shader->muFogColor.ModifiedCount; shader->muFogColor.ModifiedCount = 0;
+			uniforms["uDynLightColor"] += shader->muDynLightColor.ModifiedCount; shader->muDynLightColor.ModifiedCount = 0;
+			uniforms["uObjectColor"] += shader->muObjectColor.ModifiedCount; shader->muObjectColor.ModifiedCount = 0;
+			uniforms["uObjectColor2"] += shader->muObjectColor2.ModifiedCount; shader->muObjectColor2.ModifiedCount = 0;
+			uniforms["uGlowBottomColor"] += shader->muGlowBottomColor.ModifiedCount; shader->muGlowBottomColor.ModifiedCount = 0;
+			uniforms["uGlowTopColor"] += shader->muGlowTopColor.ModifiedCount; shader->muGlowTopColor.ModifiedCount = 0;
+			uniforms["uGlowBottomPlane"] += shader->muGlowBottomPlane.ModifiedCount; shader->muGlowBottomPlane.ModifiedCount = 0;
+			uniforms["uGlowTopPlane"] += shader->muGlowTopPlane.ModifiedCount; shader->muGlowTopPlane.ModifiedCount = 0;
+			uniforms["uSplitBottomPlane"] += shader->muSplitBottomPlane.ModifiedCount; shader->muSplitBottomPlane.ModifiedCount = 0;
+			uniforms["uSplitTopPlane"] += shader->muSplitTopPlane.ModifiedCount; shader->muSplitTopPlane.ModifiedCount = 0;
+			uniforms["uClipLine"] += shader->muClipLine.ModifiedCount; shader->muClipLine.ModifiedCount = 0;
+			uniforms["uInterpolationFactor"] += shader->muInterpolationFactor.ModifiedCount; shader->muInterpolationFactor.ModifiedCount = 0;
+			uniforms["uClipHeight"] += shader->muClipHeight.ModifiedCount; shader->muClipHeight.ModifiedCount = 0;
+			uniforms["uClipHeightDirection"] += shader->muClipHeightDirection.ModifiedCount; shader->muClipHeightDirection.ModifiedCount = 0;
+			uniforms["uAlphaThreshold"] += shader->muAlphaThreshold.ModifiedCount; shader->muAlphaThreshold.ModifiedCount = 0;
+			uniforms["uViewHeight"] += shader->muViewHeight.ModifiedCount; shader->muViewHeight.ModifiedCount = 0;
+			uniforms["uSpecularMaterial"] += shader->muSpecularMaterial.ModifiedCount; shader->muSpecularMaterial.ModifiedCount = 0;
+			uniforms["uTimer"] += shader->muTimer.ModifiedCount; shader->muTimer.ModifiedCount = 0;
+		}
+	}
+
+	int maxCount = 0;
+	for (const auto &it : uniforms)
+		maxCount = MAX(maxCount, it.second);
+
+	FString result;
+	for (const auto &it : uniforms)
+		result.AppendFormat("%s = %d\n", it.first.GetChars(), it.second * 100 / maxCount);
+	return result;
+}
+
+ADD_STAT(uniforms)
+{
+	return FShader::GetUsageStats();
+}
+
 FShaderManager::FShaderManager()
 {
 	if (!gl.legacyMode)
