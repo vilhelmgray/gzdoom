@@ -36,8 +36,13 @@
 #include "poly_triangle.h"
 #include "swrenderer/drawers/r_draw_rgba.h"
 #include "screen_triangle.h"
+#include "swfragmentshader32.h"
 #ifndef NO_SSE
 #include "poly_drawer32_sse2.h"
+#include "swfragmentshader32_sse2.h"
+#ifdef _MSC_VER
+#include "swfragmentshader32_avx2.h"
+#endif
 #else
 #include "poly_drawer32.h"
 #endif
@@ -1542,7 +1547,13 @@ void(*ScreenTriangle::TriDrawers8[])(int, int, uint32_t, uint32_t, const TriDraw
 
 void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
+#if defined(_MSC_VER)
+	&ScreenBlockDrawerAVX2::Draw,
+#elif !defined(NO_SSE)
+	&ScreenBlockDrawerSSE2::Draw,
+#else
 	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureOpaque
+#endif
 	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureMasked
 	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureAdd
 	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureSub

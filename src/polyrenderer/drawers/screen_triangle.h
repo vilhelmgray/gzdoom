@@ -51,8 +51,8 @@ struct ShadedTriVertex
 
 struct ScreenTriangleStepVariables
 {
-	float W, U, V;
-	float WorldX, WorldY, WorldZ, Padding; // Padding so it can be loaded directly into a XMM register
+	float W, U, V, Padding0;
+	float WorldX, WorldY, WorldZ, Padding1; // Padding so it can be loaded directly into a XMM register
 };
 
 struct TriDrawTriangleArgs
