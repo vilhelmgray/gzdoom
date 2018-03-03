@@ -29,6 +29,11 @@ struct SWVec4fSSE2
 	__m128 x, y, z, w;
 };
 
+struct SWVec2usSSE2
+{
+	__m128i x, y;
+};
+
 class SamplerSSE2
 {
 public:
@@ -48,6 +53,10 @@ public:
 	float Light;
 	float Shade;
 	float GlobVis;
+	PolyLight *Lights;
+	int NumLights;
+	__m128 WorldNormal;
+	__m128i DynLightColor;
 
 	// In variables
 	__m128 GradW;
@@ -59,6 +68,9 @@ public:
 
 	FORCEINLINE void SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step);
 	FORCEINLINE void Run();
+
+private:
+	FORCEINLINE SWVec2usSSE2 CalcDynamicLight();
 };
 
 class ScreenBlockDrawerSSE2
@@ -142,49 +154,6 @@ void SWFragmentShaderSSE2::SetVaryings(ScreenTriangleStepVariables &pos, const S
 	WorldPos.z = _mm_mul_ps(world2, inv_w);
 }
 
-#if 0
-void SWFragmentShaderSSE2::Run()
-{
-	__m128i fg = Tex.TextureNearest(TexCoord);
-
-	__m128i fgX, fgY, fgZ, fgW;
-	{
-		__m128i mpixello = _mm_unpacklo_epi8(fg, _mm_setzero_si128());
-		__m128i mpixelhi = _mm_unpackhi_epi8(fg, _mm_setzero_si128());
-		__m128 p0 = _mm_castsi128_ps(_mm_unpacklo_epi16(mpixello, _mm_setzero_si128()));
-		__m128 p1 = _mm_castsi128_ps(_mm_unpackhi_epi16(mpixello, _mm_setzero_si128()));
-		__m128 p2 = _mm_castsi128_ps(_mm_unpacklo_epi16(mpixelhi, _mm_setzero_si128()));
-		__m128 p3 = _mm_castsi128_ps(_mm_unpackhi_epi16(mpixelhi, _mm_setzero_si128()));
-		_MM_TRANSPOSE4_PS(p0, p1, p2, p3);
-		fgX = _mm_castps_si128(p2);
-		fgY = _mm_castps_si128(p1);
-		fgZ = _mm_castps_si128(p0);
-		fgW = _mm_castps_si128(p3);
-	}
-
-	__m128 lightposf = _mm_sub_ps(_mm_set1_ps(Shade), _mm_min_ps(_mm_set1_ps(24.0f / 32.0f), _mm_mul_ps(_mm_set1_ps(GlobVis), _mm_load_ps(GradW))));
-	lightposf = _mm_sub_ps(_mm_set1_ps(1.0f), _mm_max_ps(_mm_min_ps(lightposf, _mm_set1_ps(31.0f / 32.0f)), _mm_setzero_ps()));
-
-	__m128 mlightmask = _mm_set1_ps(LightMask);
-	lightposf = _mm_or_ps(_mm_and_ps(mlightmask, lightposf), _mm_andnot_ps(mlightmask, _mm_set1_ps(Light)));
-
-	__m128i x = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(fgX), lightposf));
-	__m128i y = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(fgY), lightposf));
-	__m128i z = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(fgZ), lightposf));
-	__m128i w = fgW;
-
-	__m128i ppacked;
-	{
-		__m128 p0 = _mm_castsi128_ps(z);
-		__m128 p1 = _mm_castsi128_ps(y);
-		__m128 p2 = _mm_castsi128_ps(x);
-		__m128 p3 = _mm_castsi128_ps(w);
-		_MM_TRANSPOSE4_PS(p0, p1, p2, p3);
-		ppacked = _mm_packus_epi16(_mm_packs_epi32(_mm_castps_si128(p0), _mm_castps_si128(p1)), _mm_packs_epi32(_mm_castps_si128(p2), _mm_castps_si128(p3)));
-	}
-	_mm_storeu_si128((__m128i*)FragColor, ppacked);
-}
-#else
 void SWFragmentShaderSSE2::Run()
 {
 	__m128i fg = Tex.TextureNearest(TexCoord);
@@ -211,13 +180,87 @@ void SWFragmentShaderSSE2::Run()
 	fg2 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(fg2), lightpos2));
 	fg3 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(fg3), lightpos3));
 
-	fglo = _mm_packs_epi32(fg0, fg1);
-	fghi = _mm_packs_epi32(fg2, fg3);
-	fg = _mm_packus_epi16(fglo, fghi);
+	if (NumLights == 0)
+	{
+		fglo = _mm_packs_epi32(fg0, fg1);
+		fghi = _mm_packs_epi32(fg2, fg3);
+		fg = _mm_packus_epi16(fglo, fghi);
+	}
+	else
+	{
+		SWVec2usSSE2 dynlight = CalcDynamicLight();
+		fglo = _mm_add_epi16(_mm_packs_epi32(fg0, fg1), _mm_srli_epi16(_mm_mullo_epi16(fglo, dynlight.x), 8));
+		fghi = _mm_add_epi16(_mm_packs_epi32(fg2, fg3), _mm_srli_epi16(_mm_mullo_epi16(fghi, dynlight.y), 8));
+		fg = _mm_packus_epi16(fglo, fghi);
+	}
 
 	_mm_storeu_si128((__m128i*)FragColor, fg);
 }
-#endif
+
+SWVec2usSSE2 SWFragmentShaderSSE2::CalcDynamicLight()
+{
+	SWVec2usSSE2 lit;
+
+	lit.x = DynLightColor;
+	lit.y = DynLightColor;
+
+	__m128 m256f = _mm_set1_ps(256.0f);
+	__m128i m256i = _mm_set1_epi16(256);
+	__m128 mSignBit = _mm_set1_ps(-0.0f);
+
+	__m128 worldnormalx = _mm_shuffle_ps(WorldNormal, WorldNormal, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 worldnormaly = _mm_shuffle_ps(WorldNormal, WorldNormal, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 worldnormalz = _mm_shuffle_ps(WorldNormal, WorldNormal, _MM_SHUFFLE(2, 2, 2, 2));
+
+	for (int i = 0; i < NumLights; i++)
+	{
+		__m128 lightpos = _mm_loadu_ps(&Lights[i].x);
+		__m128 lightposx = _mm_shuffle_ps(lightpos, lightpos, _MM_SHUFFLE(0, 0, 0, 0));
+		__m128 lightposy = _mm_shuffle_ps(lightpos, lightpos, _MM_SHUFFLE(1, 1, 1, 1));
+		__m128 lightposz = _mm_shuffle_ps(lightpos, lightpos, _MM_SHUFFLE(2, 2, 2, 2));
+		__m128 light_radius = _mm_shuffle_ps(lightpos, lightpos, _MM_SHUFFLE(3, 3, 3, 3)); // Lights[i].radius
+
+		__m128 is_attenuated = _mm_cmpge_ss(light_radius, _mm_setzero_ps());
+		is_attenuated = _mm_shuffle_ps(is_attenuated, is_attenuated, _MM_SHUFFLE(0, 0, 0, 0));
+		light_radius = _mm_andnot_ps(mSignBit, light_radius);
+
+		// L = light-pos
+		// dist = sqrt(dot(L, L))
+		// distance_attenuation = 1 - MIN(dist * (1/radius), 1)
+		__m128 Lx = _mm_sub_ps(lightposx, WorldPos.x);
+		__m128 Ly = _mm_sub_ps(lightposy, WorldPos.y);
+		__m128 Lz = _mm_sub_ps(lightposz, WorldPos.z);
+		__m128 dist2 = _mm_add_ps(_mm_add_ps(_mm_mul_ps(Lx, Lx), _mm_mul_ps(Ly, Ly)), _mm_mul_ps(Lz, Lz));
+		__m128 rcp_dist = _mm_rsqrt_ps(dist2);
+		__m128 dist = _mm_mul_ps(dist2, rcp_dist);
+		__m128 distance_attenuation = _mm_sub_ps(m256f, _mm_min_ps(_mm_mul_ps(dist, light_radius), m256f));
+
+		// The simple light type
+		__m128 simple_attenuation = distance_attenuation;
+
+		// The point light type
+		// diffuse = max(dot(N,normalize(L)),0) * attenuation
+		__m128 dotNL = _mm_mul_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(worldnormalx, Lx), _mm_mul_ps(worldnormaly, Ly)), _mm_mul_ps(worldnormalz, Lz)), rcp_dist);
+		__m128 point_attenuation = _mm_mul_ps(_mm_max_ps(dotNL, _mm_setzero_ps()), distance_attenuation);
+
+		__m128i attenuation = _mm_cvtps_epi32(_mm_or_ps(_mm_and_ps(is_attenuated, simple_attenuation), _mm_andnot_ps(is_attenuated, point_attenuation)));
+
+		__m128i light_color = _mm_cvtsi32_si128(Lights[i].color);
+		light_color = _mm_unpacklo_epi8(light_color, _mm_setzero_si128());
+		light_color = _mm_shuffle_epi32(light_color, _MM_SHUFFLE(1, 0, 1, 0));
+
+		__m128i attenuationlo = _mm_packs_epi32(_mm_shuffle_epi32(attenuation, _MM_SHUFFLE(0, 0, 0, 0)), _mm_shuffle_epi32(attenuation, _MM_SHUFFLE(1, 1, 1, 1)));
+		__m128i attenuationhi = _mm_packs_epi32(_mm_shuffle_epi32(attenuation, _MM_SHUFFLE(2, 2, 2, 2)), _mm_shuffle_epi32(attenuation, _MM_SHUFFLE(3, 3, 3, 3)));
+
+		lit.x = _mm_add_epi16(_mm_srli_epi16(_mm_mullo_epi16(light_color, attenuationlo), 8), lit.x);
+		lit.y = _mm_add_epi16(_mm_srli_epi16(_mm_mullo_epi16(light_color, attenuationhi), 8), lit.y);
+	}
+
+	lit.x = _mm_min_epi16(lit.x, m256i);
+	lit.y = _mm_min_epi16(lit.y, m256i);
+
+	return lit;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -310,6 +353,11 @@ void ScreenBlockDrawerSSE2::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.Tex.data = (const uint32_t *)args->uniforms->TexturePixels();
 	Shader.Tex.width = args->uniforms->TextureWidth();
 	Shader.Tex.height = args->uniforms->TextureHeight();
+
+	Shader.Lights = args->uniforms->Lights();
+	Shader.NumLights = args->uniforms->NumLights();
+	Shader.WorldNormal = _mm_setr_ps(args->uniforms->Normal().X, args->uniforms->Normal().Y, args->uniforms->Normal().Z, 0.0f);
+	Shader.DynLightColor = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(args->uniforms->DynLightColor()), _mm_setzero_si128()), _mm_setzero_si128());
 }
 
 void ScreenBlockDrawerSSE2::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)

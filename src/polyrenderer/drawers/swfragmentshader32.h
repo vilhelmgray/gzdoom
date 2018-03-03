@@ -48,6 +48,10 @@ public:
 	float Light;
 	float Shade;
 	float GlobVis;
+	PolyLight *Lights;
+	int NumLights;
+	float WorldNormal[3];
+	uint32_t DynLightColor[4];
 
 	// In variables
 	float GradW[4];
@@ -59,6 +63,9 @@ public:
 
 	FORCEINLINE void SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step);
 	FORCEINLINE void Run();
+
+private:
+	FORCEINLINE uint32_t CalcDynamicLight(int i);
 };
 
 class ScreenBlockDrawer
@@ -134,12 +141,75 @@ void SWFragmentShader::Run()
 		else
 			lightposf = Light;
 
-		uint32_t r = (int32_t)(RPART(fg) * lightposf);
-		uint32_t g = (int32_t)(GPART(fg) * lightposf);
-		uint32_t b = (int32_t)(BPART(fg) * lightposf);
+		uint32_t material_r = RPART(fg);
+		uint32_t material_g = GPART(fg);
+		uint32_t material_b = BPART(fg);
+
+		uint32_t r = (int32_t)(material_r * lightposf);
+		uint32_t g = (int32_t)(material_g * lightposf);
+		uint32_t b = (int32_t)(material_b * lightposf);
 		uint32_t a = APART(fg);
+
+		if (NumLights != 0)
+		{
+			uint32_t dynlight = CalcDynamicLight(i);
+			r = MIN(r + ((material_r * RPART(dynlight)) >> 8), (uint32_t)255);
+			g = MIN(g + ((material_g * GPART(dynlight)) >> 8), (uint32_t)255);
+			b = MIN(b + ((material_b * BPART(dynlight)) >> 8), (uint32_t)255);
+		}
+
 		FragColor[i] = MAKEARGB(a, r, g, b);
 	}
+}
+
+uint32_t SWFragmentShader::CalcDynamicLight(int j)
+{
+	uint32_t lit[4];
+
+	lit[0] = DynLightColor[0];
+	lit[1] = DynLightColor[1];
+	lit[2] = DynLightColor[2];
+	lit[3] = DynLightColor[3];
+
+	for (int i = 0; i < NumLights; i++)
+	{
+		float light_radius = Lights[i].radius;
+
+		bool is_attenuated = light_radius < 0.0f;
+		if (is_attenuated)
+			light_radius = -light_radius;
+
+		// L = light-pos
+		// dist = sqrt(dot(L, L))
+		// distance_attenuation = 1 - MIN(dist * (1/radius), 1)
+		float Lx = Lights[i].x - WorldPos.x[j];
+		float Ly = Lights[i].y - WorldPos.y[j];
+		float Lz = Lights[i].z - WorldPos.z[j];
+		float dist2 = Lx * Lx + Ly * Ly + Lz * Lz;
+		float rcp_dist = 1.0f / sqrt(dist2);
+		float dist = dist2 * rcp_dist;
+		float distance_attenuation = 256.0f - MIN(dist * light_radius, 256.0f);
+
+		// The simple light type
+		float simple_attenuation = distance_attenuation;
+
+		// The point light type
+		// diffuse = max(dot(N,normalize(L)),0) * attenuation
+		float dotNL = (WorldNormal[0] * Lx + WorldNormal[1] * Ly + WorldNormal[2] * Lz) * rcp_dist;
+		float point_attenuation = MAX(dotNL, 0.0f) * distance_attenuation;
+
+		uint32_t attenuation = (uint32_t)(is_attenuated ? (int32_t)point_attenuation : (int32_t)simple_attenuation);
+
+		lit[0] += (RPART(Lights[i].color) * attenuation) >> 8;
+		lit[1] += (GPART(Lights[i].color) * attenuation) >> 8;
+		lit[2] += (BPART(Lights[i].color) * attenuation) >> 8;
+	}
+
+	lit[0] = MIN(lit[0], (uint32_t)256);
+	lit[1] = MIN(lit[1], (uint32_t)256);
+	lit[2] = MIN(lit[2], (uint32_t)256);
+
+	return MAKEARGB(lit[3],lit[0],lit[1],lit[2]);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -234,6 +304,16 @@ void ScreenBlockDrawer::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.Tex.data = (const uint32_t *)args->uniforms->TexturePixels();
 	Shader.Tex.width = args->uniforms->TextureWidth();
 	Shader.Tex.height = args->uniforms->TextureHeight();
+
+	Shader.Lights = args->uniforms->Lights();
+	Shader.NumLights = args->uniforms->NumLights();
+	Shader.WorldNormal[0] = args->uniforms->Normal().X;
+	Shader.WorldNormal[1] = args->uniforms->Normal().Y;
+	Shader.WorldNormal[2] = args->uniforms->Normal().Z;
+	Shader.DynLightColor[0] = RPART(args->uniforms->DynLightColor());
+	Shader.DynLightColor[1] = GPART(args->uniforms->DynLightColor());
+	Shader.DynLightColor[2] = BPART(args->uniforms->DynLightColor());
+	Shader.DynLightColor[3] = APART(args->uniforms->DynLightColor());
 }
 
 void ScreenBlockDrawer::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
