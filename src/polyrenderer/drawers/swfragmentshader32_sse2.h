@@ -75,6 +75,7 @@ private:
 	FORCEINLINE SWVec2usSSE2 VECTORCALL CalcDynamicLight();
 };
 
+template<typename BlendT>
 class ScreenBlockDrawerSSE2
 {
 public:
@@ -280,7 +281,8 @@ SWVec2usSSE2 SWFragmentShaderSSE2::CalcDynamicLight()
 
 /////////////////////////////////////////////////////////////////////////////
 
-void ScreenBlockDrawerSSE2::StepY()
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -293,23 +295,57 @@ void ScreenBlockDrawerSSE2::StepY()
 	Dest += Pitch;
 }
 
-void ScreenBlockDrawerSSE2::StoreFull(int offset)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::StoreFull(int offset)
 {
-	_mm_storeu_si128((__m128i*)(Dest + offset), _mm_loadu_si128((const __m128i*)Shader.FragColor));
-}
+	using namespace TriScreenDrawerModes;
 
-void ScreenBlockDrawerSSE2::StoreMasked(int offset, uint32_t mask)
-{
-	uint32_t *d = Dest + offset;
-	for (int i = 0; i < 4; i++)
+	if (BlendT::Mode == (int)BlendModes::Opaque)
 	{
-		if (mask & (1 << 31))
-			d[i] = Shader.FragColor[i];
-		mask <<= 1;
+		_mm_storeu_si128((__m128i*)(Dest + offset), _mm_loadu_si128((const __m128i*)Shader.FragColor));
+	}
+	else if (BlendT::Mode == (int)BlendModes::Masked)
+	{
+		__m128i fragcolor = _mm_loadu_si128((const __m128i*)Shader.FragColor);
+		__m128i mask = _mm_cmpeq_epi32(_mm_and_si128(fragcolor, _mm_set1_epi32(0xff000000)), _mm_setzero_si128());
+		mask = _mm_xor_si128(mask, _mm_set1_epi32(0xffffffff));
+#if 0 // AVX 2
+		_mm_maskstore_epi32((int*)Dest, mask, fragcolor);
+#else // SSE 2
+		_mm_maskmoveu_si128(fragcolor, mask, (char*)(Dest + offset));
+#endif
 	}
 }
 
-void ScreenBlockDrawerSSE2::ProcessMaskRange(uint32_t mask)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::StoreMasked(int offset, uint32_t mask)
+{
+	using namespace TriScreenDrawerModes;
+
+	if (BlendT::Mode == (int)BlendModes::Opaque)
+	{
+		uint32_t *d = Dest + offset;
+		for (int i = 0; i < 4; i++)
+		{
+			if (mask & (1 << 31))
+				d[i] = Shader.FragColor[i];
+			mask <<= 1;
+		}
+	}
+	else if (BlendT::Mode == (int)BlendModes::Masked)
+	{
+		uint32_t *d = Dest + offset;
+		for (int i = 0; i < 4; i++)
+		{
+			if ((mask & (1 << 31)) && APART(Shader.FragColor[i]))
+				d[i] = Shader.FragColor[i];
+			mask <<= 1;
+		}
+	}
+}
+
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -329,7 +365,8 @@ void ScreenBlockDrawerSSE2::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-void ScreenBlockDrawerSSE2::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -355,7 +392,8 @@ void ScreenBlockDrawerSSE2::ProcessBlock(uint32_t mask0, uint32_t mask1)
 	}
 }
 
-void ScreenBlockDrawerSSE2::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -374,7 +412,8 @@ void ScreenBlockDrawerSSE2::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.DynLightColor = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(args->uniforms->DynLightColor()), _mm_setzero_si128()), _mm_setzero_si128());
 }
 
-void ScreenBlockDrawerSSE2::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -386,7 +425,8 @@ void ScreenBlockDrawerSSE2::SetGradients(int destX, int destY, const ShadedTriVe
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-void ScreenBlockDrawerSSE2::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename BlendT>
+void ScreenBlockDrawerSSE2<BlendT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawerSSE2 block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;

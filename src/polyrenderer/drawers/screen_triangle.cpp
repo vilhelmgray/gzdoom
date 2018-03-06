@@ -1548,14 +1548,18 @@ void(*ScreenTriangle::TriDrawers8[])(int, int, uint32_t, uint32_t, const TriDraw
 void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
 #if defined(_MSC_VER)
-	&ScreenBlockDrawerAVX2::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::OpaqueBlend>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend>::Draw,
 #elif !defined(NO_SSE)
-	&ScreenBlockDrawerSSE2::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::OpaqueBlend>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend>::Draw,
 #else
 	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureOpaque
-#endif
 	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureMasked
 	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureAdd
+#endif
 	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureSub
 	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,    // TextureRevSub
 	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::TextureSampler>::Execute,    // TextureAddSrcColor

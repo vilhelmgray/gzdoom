@@ -68,6 +68,7 @@ private:
 	FORCEINLINE uint32_t CalcDynamicLight(int i);
 };
 
+template<typename BlendT>
 class ScreenBlockDrawer
 {
 public:
@@ -214,7 +215,8 @@ uint32_t SWFragmentShader::CalcDynamicLight(int j)
 
 /////////////////////////////////////////////////////////////////////////////
 
-void ScreenBlockDrawer::StepY()
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -227,24 +229,55 @@ void ScreenBlockDrawer::StepY()
 	Dest += Pitch;
 }
 
-void ScreenBlockDrawer::StoreFull(int offset)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::StoreFull(int offset)
 {
-	for (int i = 0; i < 4; i++)
-		Dest[offset + i] = Shader.FragColor[i];
-}
+	using namespace TriScreenDrawerModes;
 
-void ScreenBlockDrawer::StoreMasked(int offset, uint32_t mask)
-{
-	uint32_t *d = Dest + offset;
-	for (int i = 0; i < 4; i++)
+	if (BlendT::Mode == (int)BlendModes::Opaque)
 	{
-		if (mask & (1 << 31))
-			d[i] = Shader.FragColor[i];
-		mask <<= 1;
+		for (int i = 0; i < 4; i++)
+			Dest[offset + i] = Shader.FragColor[i];
+	}
+	else if (BlendT::Mode == (int)BlendModes::Masked)
+	{
+		for (int i = 0; i < 4; i++)
+		{
+			if (APART(Shader.FragColor[i]))
+				Dest[offset + i] = Shader.FragColor[i];
+		}
 	}
 }
 
-void ScreenBlockDrawer::ProcessMaskRange(uint32_t mask)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::StoreMasked(int offset, uint32_t mask)
+{
+	using namespace TriScreenDrawerModes;
+
+	if (BlendT::Mode == (int)BlendModes::Opaque)
+	{
+		uint32_t *d = Dest + offset;
+		for (int i = 0; i < 4; i++)
+		{
+			if (mask & (1 << 31))
+				d[i] = Shader.FragColor[i];
+			mask <<= 1;
+		}
+	}
+	else if (BlendT::Mode == (int)BlendModes::Masked)
+	{
+		uint32_t *d = Dest + offset;
+		for (int i = 0; i < 4; i++)
+		{
+			if ((mask & (1 << 31)) && APART(Shader.FragColor[i]))
+				d[i] = Shader.FragColor[i];
+			mask <<= 1;
+		}
+	}
+}
+
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -264,7 +297,8 @@ void ScreenBlockDrawer::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-void ScreenBlockDrawer::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -290,7 +324,8 @@ void ScreenBlockDrawer::ProcessBlock(uint32_t mask0, uint32_t mask1)
 	}
 }
 
-void ScreenBlockDrawer::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -316,7 +351,8 @@ void ScreenBlockDrawer::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.DynLightColor[3] = APART(args->uniforms->DynLightColor());
 }
 
-void ScreenBlockDrawer::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -328,7 +364,8 @@ void ScreenBlockDrawer::SetGradients(int destX, int destY, const ShadedTriVertex
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-void ScreenBlockDrawer::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename BlendT>
+void ScreenBlockDrawer<BlendT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawer block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;
