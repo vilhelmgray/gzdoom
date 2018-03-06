@@ -38,11 +38,13 @@ struct SWVec2usAVX2
 class SamplerAVX2
 {
 public:
-	uint32_t width;
 	uint32_t height;
 	const uint32_t *data;
 
-	FORCEINLINE __m256i TextureNearest(const SWVec8fAVX2 &input) const;
+	__m256i size;
+
+	FORCEINLINE void VECTORCALL SetSource(const uint32_t *pixels, int width, int height);
+	FORCEINLINE __m256i VECTORCALL TextureNearest(const SWVec8fAVX2 &input) const;
 };
 
 class SWFragmentShaderAVX2
@@ -67,11 +69,11 @@ public:
 	// Out variables
 	uint32_t FragColor[8];
 
-	FORCEINLINE void SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step);
-	FORCEINLINE void Run();
+	FORCEINLINE void VECTORCALL SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step);
+	FORCEINLINE void VECTORCALL Run();
 
 private:
-	FORCEINLINE SWVec2usAVX2 CalcDynamicLight();
+	FORCEINLINE SWVec2usAVX2 VECTORCALL CalcDynamicLight();
 };
 
 class ScreenBlockDrawerAVX2
@@ -80,13 +82,13 @@ public:
 	static void Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args);
 
 private:
-	FORCEINLINE void SetUniforms(const TriDrawTriangleArgs *args);
-	FORCEINLINE void SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY);
-	FORCEINLINE void ProcessBlock(uint32_t mask0, uint32_t mask1);
-	FORCEINLINE void ProcessMaskRange(uint32_t mask);
-	FORCEINLINE void StepY();
-	FORCEINLINE void StoreFull();
-	FORCEINLINE void StoreMasked(uint32_t mask);
+	FORCEINLINE void VECTORCALL SetUniforms(const TriDrawTriangleArgs *args);
+	FORCEINLINE void VECTORCALL SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY);
+	FORCEINLINE void VECTORCALL ProcessBlock(uint32_t mask0, uint32_t mask1);
+	FORCEINLINE void VECTORCALL ProcessMaskRange(uint32_t mask);
+	FORCEINLINE void VECTORCALL StepY();
+	FORCEINLINE void VECTORCALL StoreFull();
+	FORCEINLINE void VECTORCALL StoreMasked(uint32_t mask);
 
 	// Gradients
 	ScreenTriangleStepVariables GradPosX;
@@ -103,16 +105,18 @@ private:
 
 /////////////////////////////////////////////////////////////////////////////
 
+void SamplerAVX2::SetSource(const uint32_t *pixels, int w, int h)
+{
+	data = pixels;
+	height = h;
+	size = _mm256_slli_epi16(_mm256_setr_epi16(w, w, w, w, h, h, h, h, w, w, w, w, h, h, h, h), 1);
+}
+
 __m256i SamplerAVX2::TextureNearest(const SWVec8fAVX2 &input) const
 {
 	__m256i tmpx = _mm256_srli_epi32(_mm256_slli_epi32(_mm256_cvtps_epi32(_mm256_mul_ps(input.x, _mm256_set1_ps(1 << 24))), 8), 17);
 	__m256i tmpy = _mm256_srli_epi32(_mm256_slli_epi32(_mm256_cvtps_epi32(_mm256_mul_ps(input.y, _mm256_set1_ps(1 << 24))), 8), 17);
 	__m256i tmp = _mm256_packs_epi32(tmpx, tmpy);
-	__m256i size = _mm256_setr_epi16(
-		width << 1, width << 1, width << 1, width << 1,
-		height << 1, height << 1, height << 1, height << 1,
-		width << 1, width << 1, width << 1, width << 1,
-		height << 1, height << 1, height << 1, height << 1);
 
 	__m256i xy = _mm256_mulhi_epi16(tmp, size);
 	__m256i offsetx = _mm256_mullo_epi32(_mm256_unpacklo_epi16(xy, _mm256_setzero_si256()), _mm256_set1_epi32(height));
@@ -379,9 +383,7 @@ void ScreenBlockDrawerAVX2::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.GlobVis = args->uniforms->GlobVis() * (1.0f / 32.0f);
 	Shader.Light /= 256.0f;
 
-	Shader.Tex.data = (const uint32_t *)args->uniforms->TexturePixels();
-	Shader.Tex.width = args->uniforms->TextureWidth();
-	Shader.Tex.height = args->uniforms->TextureHeight();
+	Shader.Tex.SetSource((const uint32_t *)args->uniforms->TexturePixels(), args->uniforms->TextureWidth(), args->uniforms->TextureHeight());
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();
