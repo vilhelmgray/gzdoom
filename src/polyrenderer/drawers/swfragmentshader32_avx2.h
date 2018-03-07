@@ -47,6 +47,7 @@ public:
 	FORCEINLINE __m256i VECTORCALL TextureNearest(const SWVec8fAVX2 &input) const;
 };
 
+template<typename SamplerT>
 class SWFragmentShaderAVX2
 {
 public:
@@ -60,6 +61,7 @@ public:
 	int NumLights;
 	__m256 WorldNormal;
 	__m256i DynLightColor;
+	__m256i SkycapColor;
 
 	// In variables
 	__m256 GradW;
@@ -76,7 +78,7 @@ private:
 	FORCEINLINE SWVec2usAVX2 VECTORCALL CalcDynamicLight();
 };
 
-template<typename BlendT>
+template<typename BlendT, typename SamplerT>
 class ScreenBlockDrawerAVX2
 {
 public:
@@ -101,7 +103,7 @@ private:
 	uint32_t *Dest;
 	int Pitch;
 
-	SWFragmentShaderAVX2 Shader;
+	SWFragmentShaderAVX2<SamplerT> Shader;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -129,7 +131,8 @@ __m256i SamplerAVX2::TextureNearest(const SWVec8fAVX2 &input) const
 
 /////////////////////////////////////////////////////////////////////////////
 
-void SWFragmentShaderAVX2::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
+template<typename SamplerT>
+void SWFragmentShaderAVX2<SamplerT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
 {
 	{
 		__m128 stepwuv = _mm_loadu_ps(&step.W);
@@ -194,50 +197,83 @@ void SWFragmentShaderAVX2::SetVaryings(ScreenTriangleStepVariables &pos, const S
 	}
 }
 
-void SWFragmentShaderAVX2::Run()
+template<typename SamplerT>
+void SWFragmentShaderAVX2<SamplerT>::Run()
 {
+	using namespace TriScreenDrawerModes;
+
 	__m256i fg = Tex.TextureNearest(TexCoord);
 
-	__m256 mlightmask = _mm256_set1_ps(LightMask);
-	__m256 lightposf = _mm256_sub_ps(_mm256_set1_ps(Shade), _mm256_min_ps(_mm256_set1_ps(24.0f / 32.0f), _mm256_mul_ps(_mm256_set1_ps(GlobVis), GradW)));
-	lightposf = _mm256_sub_ps(_mm256_set1_ps(1.0f), _mm256_max_ps(_mm256_min_ps(lightposf, _mm256_set1_ps(31.0f / 32.0f)), _mm256_setzero_ps()));
-	lightposf = _mm256_or_ps(_mm256_and_ps(mlightmask, lightposf), _mm256_andnot_ps(mlightmask, _mm256_set1_ps(Light)));
-
-	__m256 lightpos0 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(0, 0, 0, 0));
-	__m256 lightpos1 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(1, 1, 1, 1));
-	__m256 lightpos2 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(2, 2, 2, 2));
-	__m256 lightpos3 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(3, 3, 3, 3));
-
-	__m256i fglo = _mm256_unpacklo_epi8(fg, _mm256_setzero_si256());
-	__m256i fghi = _mm256_unpackhi_epi8(fg, _mm256_setzero_si256());
-	__m256i fg0 = _mm256_unpacklo_epi16(fglo, _mm256_setzero_si256());
-	__m256i fg1 = _mm256_unpackhi_epi16(fglo, _mm256_setzero_si256());
-	__m256i fg2 = _mm256_unpacklo_epi16(fghi, _mm256_setzero_si256());
-	__m256i fg3 = _mm256_unpackhi_epi16(fghi, _mm256_setzero_si256());
-
-	fg0 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg0), lightpos0));
-	fg1 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg1), lightpos1));
-	fg2 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg2), lightpos2));
-	fg3 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg3), lightpos3));
-
-	if (NumLights == 0)
+	if (SamplerT::Mode == (int)Samplers::Skycap)
 	{
-		fglo = _mm256_packs_epi32(fg0, fg1);
-		fghi = _mm256_packs_epi32(fg2, fg3);
+		__m256i v = _mm256_cvtps_epi32(_mm256_mul_ps(TexCoord.y, _mm256_set1_ps(1 << 24)));
+
+		int start_fade = 2; // How fast it should fade out
+
+		__m256i alpha_top = _mm256_max_epi32(_mm256_min_epi32(_mm256_srai_epi32(v, 16 - start_fade), _mm256_set1_epi32(256)), _mm256_setzero_si256());
+		__m256i alpha_bottom = _mm256_max_epi32(_mm256_min_epi32(_mm256_srai_epi32(_mm256_sub_epi32(_mm256_set1_epi32(2 << 24), v), 16 - start_fade), _mm256_set1_epi32(256)), _mm256_setzero_si256());
+		__m256i a = _mm256_min_epi32(alpha_top, alpha_bottom);
+		__m256i inv_a = _mm256_sub_epi32(_mm256_set1_epi32(256), a);
+
+		a = _mm256_or_si256(a, _mm256_slli_epi32(a, 16));
+		inv_a = _mm256_or_si256(inv_a, _mm256_slli_epi32(inv_a, 16));
+		__m256i alo = _mm256_shuffle_epi32(a, _MM_SHUFFLE(1, 1, 0, 0));
+		__m256i ahi = _mm256_shuffle_epi32(a, _MM_SHUFFLE(3, 3, 2, 2));
+		__m256i inv_alo = _mm256_shuffle_epi32(inv_a, _MM_SHUFFLE(1, 1, 0, 0));
+		__m256i inv_ahi = _mm256_shuffle_epi32(inv_a, _MM_SHUFFLE(3, 3, 2, 2));
+
+		__m256i fglo = _mm256_unpacklo_epi8(fg, _mm256_setzero_si256());
+		__m256i fghi = _mm256_unpackhi_epi8(fg, _mm256_setzero_si256());
+
+		fglo = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(fglo, alo), _mm256_mullo_epi16(SkycapColor, inv_alo)), _mm256_set1_epi16(127)), 8);
+		fghi = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(fghi, ahi), _mm256_mullo_epi16(SkycapColor, inv_ahi)), _mm256_set1_epi16(127)), 8);
+
 		fg = _mm256_packus_epi16(fglo, fghi);
 	}
 	else
 	{
-		SWVec2usAVX2 dynlight = CalcDynamicLight();
-		fglo = _mm256_add_epi16(_mm256_packs_epi32(fg0, fg1), _mm256_srli_epi16(_mm256_mullo_epi16(fglo, dynlight.x), 8));
-		fghi = _mm256_add_epi16(_mm256_packs_epi32(fg2, fg3), _mm256_srli_epi16(_mm256_mullo_epi16(fghi, dynlight.y), 8));
-		fg = _mm256_packus_epi16(fglo, fghi);
+		__m256 mlightmask = _mm256_set1_ps(LightMask);
+		__m256 lightposf = _mm256_sub_ps(_mm256_set1_ps(Shade), _mm256_min_ps(_mm256_set1_ps(24.0f / 32.0f), _mm256_mul_ps(_mm256_set1_ps(GlobVis), GradW)));
+		lightposf = _mm256_sub_ps(_mm256_set1_ps(1.0f), _mm256_max_ps(_mm256_min_ps(lightposf, _mm256_set1_ps(31.0f / 32.0f)), _mm256_setzero_ps()));
+		lightposf = _mm256_or_ps(_mm256_and_ps(mlightmask, lightposf), _mm256_andnot_ps(mlightmask, _mm256_set1_ps(Light)));
+
+		__m256 lightpos0 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(0, 0, 0, 0));
+		__m256 lightpos1 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(1, 1, 1, 1));
+		__m256 lightpos2 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(2, 2, 2, 2));
+		__m256 lightpos3 = _mm256_shuffle_ps(lightposf, lightposf, _MM_SHUFFLE(3, 3, 3, 3));
+
+		__m256i fglo = _mm256_unpacklo_epi8(fg, _mm256_setzero_si256());
+		__m256i fghi = _mm256_unpackhi_epi8(fg, _mm256_setzero_si256());
+		__m256i fg0 = _mm256_unpacklo_epi16(fglo, _mm256_setzero_si256());
+		__m256i fg1 = _mm256_unpackhi_epi16(fglo, _mm256_setzero_si256());
+		__m256i fg2 = _mm256_unpacklo_epi16(fghi, _mm256_setzero_si256());
+		__m256i fg3 = _mm256_unpackhi_epi16(fghi, _mm256_setzero_si256());
+
+		fg0 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg0), lightpos0));
+		fg1 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg1), lightpos1));
+		fg2 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg2), lightpos2));
+		fg3 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg3), lightpos3));
+
+		if (NumLights == 0)
+		{
+			fglo = _mm256_packs_epi32(fg0, fg1);
+			fghi = _mm256_packs_epi32(fg2, fg3);
+			fg = _mm256_packus_epi16(fglo, fghi);
+		}
+		else
+		{
+			SWVec2usAVX2 dynlight = CalcDynamicLight();
+			fglo = _mm256_add_epi16(_mm256_packs_epi32(fg0, fg1), _mm256_srli_epi16(_mm256_mullo_epi16(fglo, dynlight.x), 8));
+			fghi = _mm256_add_epi16(_mm256_packs_epi32(fg2, fg3), _mm256_srli_epi16(_mm256_mullo_epi16(fghi, dynlight.y), 8));
+			fg = _mm256_packus_epi16(fglo, fghi);
+		}
 	}
 
 	_mm256_storeu_si256((__m256i*)FragColor, fg);
 }
 
-SWVec2usAVX2 SWFragmentShaderAVX2::CalcDynamicLight()
+template<typename SamplerT>
+SWVec2usAVX2 SWFragmentShaderAVX2<SamplerT>::CalcDynamicLight()
 {
 	SWVec2usAVX2 lit;
 
@@ -307,8 +343,8 @@ SWVec2usAVX2 SWFragmentShaderAVX2::CalcDynamicLight()
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::StepY()
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -321,8 +357,8 @@ void ScreenBlockDrawerAVX2<BlendT>::StepY()
 	Dest += Pitch;
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::StoreFull()
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreFull()
 {
 	using namespace TriScreenDrawerModes;
 
@@ -339,8 +375,8 @@ void ScreenBlockDrawerAVX2<BlendT>::StoreFull()
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::StoreMasked(uint32_t mask)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreMasked(uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
@@ -366,8 +402,8 @@ void ScreenBlockDrawerAVX2<BlendT>::StoreMasked(uint32_t mask)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::ProcessMaskRange(uint32_t mask)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -382,8 +418,8 @@ void ScreenBlockDrawerAVX2<BlendT>::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -405,8 +441,8 @@ void ScreenBlockDrawerAVX2<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -419,6 +455,8 @@ void ScreenBlockDrawerAVX2<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 
 	Shader.Tex.SetSource((const uint32_t *)args->uniforms->TexturePixels(), args->uniforms->TextureWidth(), args->uniforms->TextureHeight());
 
+	Shader.SkycapColor = _mm256_unpacklo_epi8(_mm256_set1_epi32(args->uniforms->Color()), _mm256_setzero_si256());
+
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();
 	__m128 worldNormal = _mm_setr_ps(args->uniforms->Normal().X, args->uniforms->Normal().Y, args->uniforms->Normal().Z, 0.0f);
@@ -427,8 +465,8 @@ void ScreenBlockDrawerAVX2<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.DynLightColor = _mm256_set_m128i(dynLightColor, dynLightColor);
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -440,8 +478,8 @@ void ScreenBlockDrawerAVX2<BlendT>::SetGradients(int destX, int destY, const Sha
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-template<typename BlendT>
-void ScreenBlockDrawerAVX2<BlendT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawerAVX2 block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;

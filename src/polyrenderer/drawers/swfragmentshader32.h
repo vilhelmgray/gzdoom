@@ -39,6 +39,7 @@ public:
 	FORCEINLINE uint32_t TextureNearest(const SWVec4f &input, int i) const;
 };
 
+template<typename SamplerT>
 class SWFragmentShader
 {
 public:
@@ -52,6 +53,7 @@ public:
 	int NumLights;
 	float WorldNormal[3];
 	uint32_t DynLightColor[4];
+	uint32_t SkycapColor;
 
 	// In variables
 	float GradW[4];
@@ -68,7 +70,7 @@ private:
 	FORCEINLINE uint32_t CalcDynamicLight(int i);
 };
 
-template<typename BlendT>
+template<typename BlendT, typename SamplerT>
 class ScreenBlockDrawer
 {
 public:
@@ -93,7 +95,7 @@ private:
 	uint32_t *Dest;
 	int Pitch;
 
-	SWFragmentShader Shader;
+	SWFragmentShader<SamplerT> Shader;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -107,7 +109,8 @@ uint32_t Sampler::TextureNearest(const SWVec4f &input, int i) const
 
 /////////////////////////////////////////////////////////////////////////////
 
-void SWFragmentShader::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
+template<typename SamplerT>
+void SWFragmentShader<SamplerT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
 {
 	for (int i = 0; i < 4; i++)
 	{
@@ -130,40 +133,71 @@ void SWFragmentShader::SetVaryings(ScreenTriangleStepVariables &pos, const Scree
 	}
 }
 
-void SWFragmentShader::Run()
+template<typename SamplerT>
+void SWFragmentShader<SamplerT>::Run()
 {
+	using namespace TriScreenDrawerModes;
+
 	for (int i = 0; i < 4; i++)
 	{
 		uint32_t fg = Tex.TextureNearest(TexCoord, i);
 
-		float lightposf;
-		if (!LightMask)
-			lightposf = 1.0f - clamp(Shade - MIN(24.0f / 32.0f, GlobVis * GradW[i]), 0.0f, 31.0f / 32.0f);
-		else
-			lightposf = Light;
-
-		uint32_t material_r = RPART(fg);
-		uint32_t material_g = GPART(fg);
-		uint32_t material_b = BPART(fg);
-
-		uint32_t r = (int32_t)(material_r * lightposf);
-		uint32_t g = (int32_t)(material_g * lightposf);
-		uint32_t b = (int32_t)(material_b * lightposf);
-		uint32_t a = APART(fg);
-
-		if (NumLights != 0)
+		if (SamplerT::Mode == (int)Samplers::Skycap)
 		{
-			uint32_t dynlight = CalcDynamicLight(i);
-			r = MIN(r + ((material_r * RPART(dynlight)) >> 8), (uint32_t)255);
-			g = MIN(g + ((material_g * GPART(dynlight)) >> 8), (uint32_t)255);
-			b = MIN(b + ((material_b * BPART(dynlight)) >> 8), (uint32_t)255);
-		}
+			int32_t v = static_cast<int32_t>(TexCoord.y[i] * (1 << 24));
 
-		FragColor[i] = MAKEARGB(a, r, g, b);
+			int start_fade = 2; // How fast it should fade out
+
+			int alpha_top = clamp(v >> (16 - start_fade), 0, 256);
+			int alpha_bottom = clamp(((2 << 24) - v) >> (16 - start_fade), 0, 256);
+			int a = MIN(alpha_top, alpha_bottom);
+			int inv_a = 256 - a;
+
+			uint32_t r = RPART(fg);
+			uint32_t g = GPART(fg);
+			uint32_t b = BPART(fg);
+			uint32_t fg_a = APART(fg);
+			uint32_t bg_red = RPART(SkycapColor);
+			uint32_t bg_green = GPART(SkycapColor);
+			uint32_t bg_blue = BPART(SkycapColor);
+			r = (r * a + bg_red * inv_a + 127) >> 8;
+			g = (g * a + bg_green * inv_a + 127) >> 8;
+			b = (b * a + bg_blue * inv_a + 127) >> 8;
+
+			FragColor[i] = MAKEARGB(fg_a, r, g, b);
+		}
+		else
+		{
+			float lightposf;
+			if (!LightMask)
+				lightposf = 1.0f - clamp(Shade - MIN(24.0f / 32.0f, GlobVis * GradW[i]), 0.0f, 31.0f / 32.0f);
+			else
+				lightposf = Light;
+
+			uint32_t material_r = RPART(fg);
+			uint32_t material_g = GPART(fg);
+			uint32_t material_b = BPART(fg);
+
+			uint32_t r = (int32_t)(material_r * lightposf);
+			uint32_t g = (int32_t)(material_g * lightposf);
+			uint32_t b = (int32_t)(material_b * lightposf);
+			uint32_t a = APART(fg);
+
+			if (NumLights != 0)
+			{
+				uint32_t dynlight = CalcDynamicLight(i);
+				r = MIN(r + ((material_r * RPART(dynlight)) >> 8), (uint32_t)255);
+				g = MIN(g + ((material_g * GPART(dynlight)) >> 8), (uint32_t)255);
+				b = MIN(b + ((material_b * BPART(dynlight)) >> 8), (uint32_t)255);
+			}
+
+			FragColor[i] = MAKEARGB(a, r, g, b);
+		}
 	}
 }
 
-uint32_t SWFragmentShader::CalcDynamicLight(int j)
+template<typename SamplerT>
+uint32_t SWFragmentShader<SamplerT>::CalcDynamicLight(int j)
 {
 	uint32_t lit[4];
 
@@ -215,8 +249,8 @@ uint32_t SWFragmentShader::CalcDynamicLight(int j)
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::StepY()
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -229,8 +263,8 @@ void ScreenBlockDrawer<BlendT>::StepY()
 	Dest += Pitch;
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::StoreFull(int offset)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::StoreFull(int offset)
 {
 	using namespace TriScreenDrawerModes;
 
@@ -249,8 +283,8 @@ void ScreenBlockDrawer<BlendT>::StoreFull(int offset)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::StoreMasked(int offset, uint32_t mask)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::StoreMasked(int offset, uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
@@ -276,8 +310,8 @@ void ScreenBlockDrawer<BlendT>::StoreMasked(int offset, uint32_t mask)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::ProcessMaskRange(uint32_t mask)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -297,8 +331,8 @@ void ScreenBlockDrawer<BlendT>::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -324,8 +358,8 @@ void ScreenBlockDrawer<BlendT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 	}
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -340,6 +374,8 @@ void ScreenBlockDrawer<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.Tex.width = args->uniforms->TextureWidth();
 	Shader.Tex.height = args->uniforms->TextureHeight();
 
+	Shader.SkycapColor = args->uniforms->Color();
+
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();
 	Shader.WorldNormal[0] = args->uniforms->Normal().X;
@@ -351,8 +387,8 @@ void ScreenBlockDrawer<BlendT>::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.DynLightColor[3] = APART(args->uniforms->DynLightColor());
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -364,8 +400,8 @@ void ScreenBlockDrawer<BlendT>::SetGradients(int destX, int destY, const ShadedT
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-template<typename BlendT>
-void ScreenBlockDrawer<BlendT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawer block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;

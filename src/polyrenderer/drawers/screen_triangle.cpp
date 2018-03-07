@@ -1548,13 +1548,13 @@ void(*ScreenTriangle::TriDrawers8[])(int, int, uint32_t, uint32_t, const TriDraw
 void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
 #if defined(_MSC_VER)
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::OpaqueBlend>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Draw,
 #elif !defined(NO_SSE)
-	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::OpaqueBlend>::Draw,
-	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend>::Draw,
-	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Draw,
 #else
 	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureOpaque
 	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureMasked
@@ -1578,7 +1578,13 @@ void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDra
 	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::FillSampler>::Execute,          // FillSub
 	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::FillSampler>::Execute,       // FillRevSub
 	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::FillSampler>::Execute,       // FillAddSrcColor
+#if defined(_MSC_VER)
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::SkycapSampler>::Draw,         // Skycap
+#elif !defined(NO_SSE)
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::SkycapSampler>::Draw,         // Skycap
+#else
 	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::SkycapSampler>::Execute,          // Skycap
+#endif
 	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::FuzzSampler>::Execute,            // Fuzz
 	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute      // FogBoundary
 };
