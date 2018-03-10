@@ -54,6 +54,7 @@ public:
 	float WorldNormal[3];
 	uint32_t DynLightColor[4];
 	uint32_t SkycapColor;
+	uint32_t FillColor;
 
 	// In variables
 	float GradW[4];
@@ -140,7 +141,16 @@ void SWFragmentShader<SamplerT>::Run()
 
 	for (int i = 0; i < 4; i++)
 	{
-		uint32_t fg = Tex.TextureNearest(TexCoord, i);
+		uint32_t fg;
+		
+		if (SamplerT::Mode == (int)Samplers::Shaded || SamplerT::Mode == (int)Samplers::Stencil || SamplerT::Mode == (int)Samplers::Fill || SamplerT::Mode == (int)Samplers::Fuzz || SamplerT::Mode == (int)Samplers::FogBoundary)
+		{
+			fg = FillColor;
+		}
+		else
+		{
+			fg = Tex.TextureNearest(TexCoord, i);
+		}
 
 		if (SamplerT::Mode == (int)Samplers::Skycap)
 		{
@@ -375,6 +385,7 @@ void ScreenBlockDrawer<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs 
 	Shader.Tex.height = args->uniforms->TextureHeight();
 
 	Shader.SkycapColor = args->uniforms->Color();
+	Shader.FillColor = args->uniforms->Color();
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();

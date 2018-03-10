@@ -61,6 +61,7 @@ public:
 	__m128 WorldNormal;
 	__m128i DynLightColor;
 	__m128i SkycapColor;
+	__m128i FillColor;
 
 	// In variables
 	__m128 GradW;
@@ -179,7 +180,16 @@ void SWFragmentShaderSSE2<SamplerT>::Run()
 {
 	using namespace TriScreenDrawerModes;
 
-	__m128i fg = Tex.TextureNearest(TexCoord);
+	__m128i fg;
+	
+	if (SamplerT::Mode == (int)Samplers::Shaded || SamplerT::Mode == (int)Samplers::Stencil || SamplerT::Mode == (int)Samplers::Fill || SamplerT::Mode == (int)Samplers::Fuzz || SamplerT::Mode == (int)Samplers::FogBoundary)
+	{
+		fg = FillColor;
+	}
+	else
+	{
+		fg = Tex.TextureNearest(TexCoord);
+	}
 
 	if (SamplerT::Mode == (int)Samplers::Skycap)
 	{
@@ -442,7 +452,8 @@ void ScreenBlockDrawerSSE2<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleA
 
 	Shader.Tex.SetSource((const uint32_t *)args->uniforms->TexturePixels(), args->uniforms->TextureWidth(), args->uniforms->TextureHeight());
 
-	Shader.SkycapColor = _mm_unpacklo_epi8(_mm_set1_epi32(args->uniforms->Color()), _mm_setzero_si128());
+	Shader.FillColor = _mm_set1_epi32(args->uniforms->Color());
+	Shader.SkycapColor = _mm_unpacklo_epi8(Shader.FillColor, _mm_setzero_si128());
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();
