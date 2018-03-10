@@ -187,9 +187,9 @@ void SWFragmentShaderSSE2<SamplerT>::Run()
 
 		int start_fade = 2; // How fast it should fade out
 
-		__m128i alpha_top = _mm_max_epi32(_mm_min_epi32(_mm_srai_epi32(v, 16 - start_fade), _mm_set1_epi32(256)), _mm_setzero_si128());
-		__m128i alpha_bottom = _mm_max_epi32(_mm_min_epi32(_mm_srai_epi32(_mm_sub_epi32(_mm_set1_epi32(2 << 24), v), 16 - start_fade), _mm_set1_epi32(256)), _mm_setzero_si128());
-		__m128i a = _mm_min_epi32(alpha_top, alpha_bottom);
+		__m128i alpha_top = _mm_max_epi16(_mm_min_epi16(_mm_srai_epi32(v, 16 - start_fade), _mm_set1_epi32(256)), _mm_setzero_si128());
+		__m128i alpha_bottom = _mm_max_epi16(_mm_min_epi16(_mm_srai_epi32(_mm_sub_epi32(_mm_set1_epi32(2 << 24), v), 16 - start_fade), _mm_set1_epi32(256)), _mm_setzero_si128());
+		__m128i a = _mm_and_si128(_mm_min_epi16(alpha_top, alpha_bottom), _mm_set1_epi32(0xffff));
 		__m128i inv_a = _mm_sub_epi32(_mm_set1_epi32(256), a);
 
 		a = _mm_or_si128(a, _mm_slli_epi32(a, 16));
