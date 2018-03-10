@@ -93,6 +93,7 @@ private:
 	FORCEINLINE void VECTORCALL StepY();
 	FORCEINLINE void VECTORCALL StoreFull();
 	FORCEINLINE void VECTORCALL StoreMasked(uint32_t mask);
+	FORCEINLINE __m256i VECTORCALL Blend(uint32_t *destptr, __m256i src);
 
 	// Gradients
 	ScreenTriangleStepVariables GradPosX;
@@ -259,10 +260,12 @@ void SWFragmentShaderAVX2<SamplerT>::Run()
 		__m256i fg2 = _mm256_unpacklo_epi16(fghi, _mm256_setzero_si256());
 		__m256i fg3 = _mm256_unpackhi_epi16(fghi, _mm256_setzero_si256());
 
-		fg0 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg0), lightpos0));
-		fg1 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg1), lightpos1));
-		fg2 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg2), lightpos2));
-		fg3 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg3), lightpos3));
+		__m256i keepalpha = _mm256_setr_epi32(0, 0, 0, 0xffffffff, 0, 0, 0, 0xffffffff);
+
+		fg0 = _mm256_or_si256(_mm256_andnot_si256(keepalpha, _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg0), lightpos0))), _mm256_and_si256(keepalpha, fg0));
+		fg1 = _mm256_or_si256(_mm256_andnot_si256(keepalpha, _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg1), lightpos1))), _mm256_and_si256(keepalpha, fg1));
+		fg2 = _mm256_or_si256(_mm256_andnot_si256(keepalpha, _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg2), lightpos2))), _mm256_and_si256(keepalpha, fg2));
+		fg3 = _mm256_or_si256(_mm256_andnot_si256(keepalpha, _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_cvtepi32_ps(fg3), lightpos3))), _mm256_and_si256(keepalpha, fg3));
 
 		if (NumLights == 0)
 		{
@@ -348,6 +351,10 @@ SWVec2usAVX2 SWFragmentShaderAVX2<SamplerT>::CalcDynamicLight()
 	lit.x = _mm256_min_epi16(lit.x, m256i);
 	lit.y = _mm256_min_epi16(lit.y, m256i);
 
+	// Keep alpha intact
+	lit.x = _mm256_or_si256(lit.x, _mm256_setr_epi16(0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255));
+	lit.y = _mm256_or_si256(lit.y, _mm256_setr_epi16(0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255));
+
 	return lit;
 }
 
@@ -368,21 +375,84 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StepY()
 }
 
 template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreFull()
+__m256i ScreenBlockDrawerAVX2<BlendT, SamplerT>::Blend(uint32_t *destptr, __m256i src)
 {
 	using namespace TriScreenDrawerModes;
 
 	if (BlendT::Mode == (int)BlendModes::Opaque)
 	{
-		_mm256_storeu_si256((__m256i*)Dest, _mm256_loadu_si256((const __m256i*)Shader.FragColor));
+		return src;
 	}
 	else if (BlendT::Mode == (int)BlendModes::Masked)
 	{
-		__m256i fragcolor = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
-		__m256i mask = _mm256_cmpeq_epi32(_mm256_and_si256(fragcolor, _mm256_set1_epi32(0xff000000)), _mm256_setzero_si256());
-		mask = _mm256_xor_si256(mask, _mm256_set1_epi32(0xffffffff));
-		_mm256_maskstore_epi32((int*)Dest, mask, fragcolor);
+		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+		__m256i destlo = _mm256_unpacklo_epi8(dest, _mm256_setzero_si256());
+		__m256i desthi = _mm256_unpackhi_epi8(dest, _mm256_setzero_si256());
+
+		__m256i srclo = _mm256_unpacklo_epi8(src, _mm256_setzero_si256());
+		__m256i srchi = _mm256_unpackhi_epi8(src, _mm256_setzero_si256());
+
+		__m256i sfactorlo = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srclo, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
+		__m256i sfactorhi = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srchi, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
+		sfactorlo = _mm256_add_epi16(sfactorlo, _mm256_srli_epi16(sfactorlo, 7)); // 255 -> 256
+		sfactorhi = _mm256_add_epi16(sfactorhi, _mm256_srli_epi16(sfactorhi, 7)); // 255 -> 256
+
+		__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
+		__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
+
+		__m256i outlo = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(destlo, dfactorlo), _mm256_mullo_epi16(srclo, sfactorlo)), _mm256_set1_epi16(128)), 8);
+		__m256i outhi = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(desthi, dfactorhi), _mm256_mullo_epi16(srchi, sfactorhi)), _mm256_set1_epi16(128)), 8);
+		__m256i out = _mm256_packus_epi16(outlo, outhi);
+		return out;
 	}
+	else if (BlendT::Mode == (int)BlendModes::AddClamp)
+	{
+		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+		__m256i out = _mm256_adds_epu8(dest, src);
+		return out;
+	}
+	else if (BlendT::Mode == (int)BlendModes::SubClamp)
+	{
+		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+		__m256i out = _mm256_subs_epu8(dest, src);
+		return out;
+	}
+	else if (BlendT::Mode == (int)BlendModes::RevSubClamp)
+	{
+		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+		__m256i out = _mm256_subs_epu8(src, dest);
+		return out;
+	}
+	else if (BlendT::Mode == (int)BlendModes::AddSrcColorOneMinusSrcColor)
+	{
+		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+		__m256i destlo = _mm256_unpacklo_epi8(dest, _mm256_setzero_si256());
+		__m256i desthi = _mm256_unpackhi_epi8(dest, _mm256_setzero_si256());
+
+		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+		__m256i srclo = _mm256_unpacklo_epi8(src, _mm256_setzero_si256());
+		__m256i srchi = _mm256_unpackhi_epi8(src, _mm256_setzero_si256());
+
+		__m256i sfactorlo = _mm256_add_epi16(srclo, _mm256_srli_epi16(srclo, 7)); // 255 -> 256
+		__m256i sfactorhi = _mm256_add_epi16(srchi, _mm256_srli_epi16(srchi, 7)); // 255 -> 256
+
+		__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
+		__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
+
+		__m256i outlo = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(destlo, dfactorlo), _mm256_mullo_epi16(srclo, sfactorlo)), _mm256_set1_epi16(128)), 8);
+		__m256i outhi = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(desthi, dfactorhi), _mm256_mullo_epi16(srchi, sfactorhi)), _mm256_set1_epi16(128)), 8);
+		__m256i out = _mm256_packus_epi16(outlo, outhi);
+		return out;
+	}
+}
+
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreFull()
+{
+	_mm256_storeu_si256((__m256i*)Dest, Blend(Dest, _mm256_loadu_si256((const __m256i*)Shader.FragColor)));
 }
 
 template<typename BlendT, typename SamplerT>
@@ -390,25 +460,27 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreMasked(uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
-	if (BlendT::Mode == (int)BlendModes::Opaque)
+	uint32_t *d = Dest;
+
+	if (BlendT::Mode != (int)BlendModes::Opaque)
 	{
-		uint32_t *d = Dest;
+		uint32_t tmp[8];
+		uint32_t m = mask;
 		for (int i = 0; i < 8; i++)
 		{
-			if (mask & (1 << 31))
-				d[i] = Shader.FragColor[i];
-			mask <<= 1;
+			if (m & (1 << 31))
+				tmp[i] = d[i];
+			m <<= 1;
 		}
+
+		_mm256_storeu_si256((__m256i*)Shader.FragColor, Blend(tmp, _mm256_loadu_si256((const __m256i*)Shader.FragColor)));
 	}
-	else if (BlendT::Mode == (int)BlendModes::Masked)
+
+	for (int i = 0; i < 8; i++)
 	{
-		uint32_t *d = Dest;
-		for (int i = 0; i < 8; i++)
-		{
-			if ((mask & (1 << 31)) && APART(Shader.FragColor[i]))
-				d[i] = Shader.FragColor[i];
-			mask <<= 1;
-		}
+		if (mask & (1 << 31))
+			d[i] = Shader.FragColor[i];
+		mask <<= 1;
 	}
 }
 

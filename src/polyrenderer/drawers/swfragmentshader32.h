@@ -85,6 +85,7 @@ private:
 	FORCEINLINE void StepY();
 	FORCEINLINE void StoreFull(int offset);
 	FORCEINLINE void StoreMasked(int offset, uint32_t mask);
+	FORCEINLINE uint32_t Blend(uint32_t *destptr, uint32_t src);
 
 	// Gradients
 	ScreenTriangleStepVariables GradPosX;
@@ -274,23 +275,77 @@ void ScreenBlockDrawer<BlendT, SamplerT>::StepY()
 }
 
 template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::StoreFull(int offset)
+uint32_t ScreenBlockDrawer<BlendT, SamplerT>::Blend(uint32_t *destptr, uint32_t src)
 {
 	using namespace TriScreenDrawerModes;
 
 	if (BlendT::Mode == (int)BlendModes::Opaque)
 	{
-		for (int i = 0; i < 4; i++)
-			Dest[offset + i] = Shader.FragColor[i];
+		return src;
 	}
 	else if (BlendT::Mode == (int)BlendModes::Masked)
 	{
-		for (int i = 0; i < 4; i++)
-		{
-			if (APART(Shader.FragColor[i]))
-				Dest[offset + i] = Shader.FragColor[i];
-		}
+		uint32_t dest = *destptr;
+		uint32_t sfactor = APART(src); sfactor += sfactor >> 7; // 255 -> 256
+		uint32_t dfactor = 256 - sfactor;
+		uint32_t out_r = (RPART(dest) * dfactor + RPART(src) * sfactor + 128) >> 8;
+		uint32_t out_g = (GPART(dest) * dfactor + GPART(src) * sfactor + 128) >> 8;
+		uint32_t out_b = (BPART(dest) * dfactor + BPART(src) * sfactor + 128) >> 8;
+		uint32_t out_a = (APART(dest) * dfactor + APART(src) * sfactor + 128) >> 8;
+		return MAKEARGB(out_a, out_r, out_g, out_b);
 	}
+	else if (BlendT::Mode == (int)BlendModes::AddClamp)
+	{
+		uint32_t dest = *destptr;
+		uint32_t out_r = MIN<uint32_t>(RPART(dest) + RPART(src), 255);
+		uint32_t out_g = MIN<uint32_t>(GPART(dest) + GPART(src), 255);
+		uint32_t out_b = MIN<uint32_t>(BPART(dest) + BPART(src), 255);
+		uint32_t out_a = MIN<uint32_t>(APART(dest) + APART(src), 255);
+		return MAKEARGB(out_a, out_r, out_g, out_b);
+	}
+	else if (BlendT::Mode == (int)BlendModes::SubClamp)
+	{
+		uint32_t dest = *destptr;
+		uint32_t out_r = MAX<uint32_t>(RPART(dest) - RPART(src), 0);
+		uint32_t out_g = MAX<uint32_t>(GPART(dest) - GPART(src), 0);
+		uint32_t out_b = MAX<uint32_t>(BPART(dest) - BPART(src), 0);
+		uint32_t out_a = MAX<uint32_t>(APART(dest) - APART(src), 0);
+		return MAKEARGB(out_a, out_r, out_g, out_b);
+	}
+	else if (BlendT::Mode == (int)BlendModes::RevSubClamp)
+	{
+		uint32_t dest = *destptr;
+		uint32_t out_r = MAX<uint32_t>(RPART(src) - RPART(dest), 0);
+		uint32_t out_g = MAX<uint32_t>(GPART(src) - GPART(dest), 0);
+		uint32_t out_b = MAX<uint32_t>(BPART(src) - BPART(dest), 0);
+		uint32_t out_a = MAX<uint32_t>(APART(src) - APART(dest), 0);
+		return MAKEARGB(out_a, out_r, out_g, out_b);
+	}
+	else if (BlendT::Mode == (int)BlendModes::AddSrcColorOneMinusSrcColor)
+	{
+		uint32_t dest = *destptr;
+		uint32_t sfactor_r = RPART(src); sfactor_r += sfactor_r >> 7; // 255 -> 256
+		uint32_t sfactor_g = GPART(src); sfactor_g += sfactor_g >> 7; // 255 -> 256
+		uint32_t sfactor_b = BPART(src); sfactor_b += sfactor_b >> 7; // 255 -> 256
+		uint32_t sfactor_a = APART(src); sfactor_a += sfactor_a >> 7; // 255 -> 256
+		uint32_t dfactor_r = 256 - sfactor_r;
+		uint32_t dfactor_g = 256 - sfactor_g;
+		uint32_t dfactor_b = 256 - sfactor_b;
+		uint32_t dfactor_a = 256 - sfactor_a;
+		uint32_t out_r = (RPART(dest) * dfactor_r + RPART(src) * sfactor_r + 128) >> 8;
+		uint32_t out_g = (GPART(dest) * dfactor_g + GPART(src) * sfactor_g + 128) >> 8;
+		uint32_t out_b = (BPART(dest) * dfactor_b + BPART(src) * sfactor_b + 128) >> 8;
+		uint32_t out_a = (APART(dest) * dfactor_a + APART(src) * sfactor_a + 128) >> 8;
+		return MAKEARGB(out_a, out_r, out_g, out_b);
+	}
+}
+
+template<typename BlendT, typename SamplerT>
+void ScreenBlockDrawer<BlendT, SamplerT>::StoreFull(int offset)
+{
+	uint32_t *d = Dest + offset;
+	for (int i = 0; i < 4; i++)
+		d[i] = Blend(d + i, Shader.FragColor[i]);
 }
 
 template<typename BlendT, typename SamplerT>
@@ -298,25 +353,23 @@ void ScreenBlockDrawer<BlendT, SamplerT>::StoreMasked(int offset, uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
-	if (BlendT::Mode == (int)BlendModes::Opaque)
+	uint32_t *d = Dest + offset;
+	if (BlendT::Mode != (int)BlendModes::Opaque)
 	{
-		uint32_t *d = Dest + offset;
+		uint32_t m = mask;
 		for (int i = 0; i < 4; i++)
 		{
-			if (mask & (1 << 31))
-				d[i] = Shader.FragColor[i];
-			mask <<= 1;
+			if (m & (1 << 31))
+				Shader.FragColor[i] = Blend(d + i, Shader.FragColor[i]);
+			m <<= 1;
 		}
 	}
-	else if (BlendT::Mode == (int)BlendModes::Masked)
+
+	for (int i = 0; i < 4; i++)
 	{
-		uint32_t *d = Dest + offset;
-		for (int i = 0; i < 4; i++)
-		{
-			if ((mask & (1 << 31)) && APART(Shader.FragColor[i]))
-				d[i] = Shader.FragColor[i];
-			mask <<= 1;
-		}
+		if (mask & (1 << 31))
+			d[i] = Shader.FragColor[i];
+		mask <<= 1;
 	}
 }
 
