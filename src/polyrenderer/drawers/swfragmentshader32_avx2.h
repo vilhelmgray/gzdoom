@@ -47,7 +47,7 @@ public:
 	FORCEINLINE __m256i VECTORCALL TextureNearest(const SWVec8fAVX2 &input) const;
 };
 
-template<typename SamplerT>
+template<typename ModeT>
 class SWFragmentShaderAVX2
 {
 public:
@@ -79,7 +79,7 @@ private:
 	FORCEINLINE SWVec2usAVX2 VECTORCALL CalcDynamicLight();
 };
 
-template<typename BlendT, typename SamplerT>
+template<typename ModeT>
 class ScreenBlockDrawerAVX2
 {
 public:
@@ -105,7 +105,7 @@ private:
 	uint32_t *Dest;
 	int Pitch;
 
-	SWFragmentShaderAVX2<SamplerT> Shader;
+	SWFragmentShaderAVX2<ModeT> Shader;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -133,8 +133,8 @@ __m256i SamplerAVX2::TextureNearest(const SWVec8fAVX2 &input) const
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename SamplerT>
-void SWFragmentShaderAVX2<SamplerT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
+template<typename ModeT>
+void SWFragmentShaderAVX2<ModeT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
 {
 	{
 		__m128 stepwuv = _mm_loadu_ps(&step.W);
@@ -199,23 +199,33 @@ void SWFragmentShaderAVX2<SamplerT>::SetVaryings(ScreenTriangleStepVariables &po
 	}
 }
 
-template<typename SamplerT>
-void SWFragmentShaderAVX2<SamplerT>::Run()
+template<typename ModeT>
+void SWFragmentShaderAVX2<ModeT>::Run()
 {
 	using namespace TriScreenDrawerModes;
 
 	__m256i fg;
 	
-	if (SamplerT::Mode == (int)Samplers::Shaded || SamplerT::Mode == (int)Samplers::Stencil || SamplerT::Mode == (int)Samplers::Fill || SamplerT::Mode == (int)Samplers::Fuzz || SamplerT::Mode == (int)Samplers::FogBoundary)
+	if (ModeT::SWFlags & SWSTYLEF_Fill)
 	{
 		fg = FillColor;
+	}
+	else if (ModeT::SWFlags & SWSTYLEF_FogBoundary)
+	{
+		fg = _mm256_loadu_si256((const __m256i*)FragColor);
 	}
 	else
 	{
 		fg = Tex.TextureNearest(TexCoord);
 	}
 
-	if (SamplerT::Mode == (int)Samplers::Skycap)
+	if ((ModeT::Flags & STYLEF_ColorIsFixed) && !(ModeT::SWFlags & SWSTYLEF_Fill))
+	{
+		__m256i rgbmask = _mm256_set1_epi32(0x00ffffff);
+		fg = _mm256_or_si256(_mm256_and_si256(rgbmask, fg), _mm256_andnot_si256(rgbmask, FillColor));
+	}
+
+	if (ModeT::SWFlags & SWSTYLEF_Skycap)
 	{
 		__m256i v = _mm256_cvtps_epi32(_mm256_mul_ps(TexCoord.y, _mm256_set1_ps(1 << 24)));
 
@@ -285,8 +295,8 @@ void SWFragmentShaderAVX2<SamplerT>::Run()
 	_mm256_storeu_si256((__m256i*)FragColor, fg);
 }
 
-template<typename SamplerT>
-SWVec2usAVX2 SWFragmentShaderAVX2<SamplerT>::CalcDynamicLight()
+template<typename ModeT>
+SWVec2usAVX2 SWFragmentShaderAVX2<ModeT>::CalcDynamicLight()
 {
 	SWVec2usAVX2 lit;
 
@@ -360,8 +370,8 @@ SWVec2usAVX2 SWFragmentShaderAVX2<SamplerT>::CalcDynamicLight()
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StepY()
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -374,16 +384,40 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StepY()
 	Dest += Pitch;
 }
 
-template<typename BlendT, typename SamplerT>
-__m256i ScreenBlockDrawerAVX2<BlendT, SamplerT>::Blend(uint32_t *destptr, __m256i src)
+template<typename ModeT>
+__m256i ScreenBlockDrawerAVX2<ModeT>::Blend(uint32_t *destptr, __m256i src)
 {
 	using namespace TriScreenDrawerModes;
 
-	if (BlendT::Mode == (int)BlendModes::Opaque)
+	if (ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_Zero)
 	{
 		return src;
 	}
-	else if (BlendT::Mode == (int)BlendModes::Masked)
+	else if (ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_One)
+	{
+		if (ModeT::BlendOp == STYLEOP_Add)
+		{
+			__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+			__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+			__m256i out = _mm256_adds_epu8(dest, src);
+			return out;
+		}
+		else if (ModeT::BlendOp == STYLEOP_Sub)
+		{
+			__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+			__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+			__m256i out = _mm256_subs_epu8(dest, src);
+			return out;
+		}
+		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		{
+			__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
+			__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
+			__m256i out = _mm256_subs_epu8(src, dest);
+			return out;
+		}
+	}
+	else
 	{
 		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
 		__m256i destlo = _mm256_unpacklo_epi8(dest, _mm256_setzero_si256());
@@ -392,77 +426,65 @@ __m256i ScreenBlockDrawerAVX2<BlendT, SamplerT>::Blend(uint32_t *destptr, __m256
 		__m256i srclo = _mm256_unpacklo_epi8(src, _mm256_setzero_si256());
 		__m256i srchi = _mm256_unpackhi_epi8(src, _mm256_setzero_si256());
 
-		__m256i sfactorlo = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srclo, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
-		__m256i sfactorhi = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srchi, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
+		__m256i sfactorlo, sfactorhi;
+		if (ModeT::SWFlags & SWSTYLEF_SrcColorOneMinusSrcColor)
+		{
+			sfactorlo = srclo;
+			sfactorhi = srchi;
+		}
+		else // if (ModeT::BlendSrc == STYLEALPHA_Src && ModeT::BlendDest == STYLEALPHA_InvSrc)
+		{
+			sfactorlo = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srclo, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
+			sfactorhi = _mm256_shufflehi_epi16(_mm256_shufflelo_epi16(srchi, _MM_SHUFFLE(3, 3, 3, 3)), _MM_SHUFFLE(3, 3, 3, 3));
+		}
 		sfactorlo = _mm256_add_epi16(sfactorlo, _mm256_srli_epi16(sfactorlo, 7)); // 255 -> 256
 		sfactorhi = _mm256_add_epi16(sfactorhi, _mm256_srli_epi16(sfactorhi, 7)); // 255 -> 256
 
 		__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
 		__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
 
-		__m256i outlo = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(destlo, dfactorlo), _mm256_mullo_epi16(srclo, sfactorlo)), _mm256_set1_epi16(128)), 8);
-		__m256i outhi = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(desthi, dfactorhi), _mm256_mullo_epi16(srchi, sfactorhi)), _mm256_set1_epi16(128)), 8);
-		__m256i out = _mm256_packus_epi16(outlo, outhi);
-		return out;
-	}
-	else if (BlendT::Mode == (int)BlendModes::AddClamp)
-	{
-		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
-		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
-		__m256i out = _mm256_adds_epu8(dest, src);
-		return out;
-	}
-	else if (BlendT::Mode == (int)BlendModes::SubClamp)
-	{
-		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
-		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
-		__m256i out = _mm256_subs_epu8(dest, src);
-		return out;
-	}
-	else if (BlendT::Mode == (int)BlendModes::RevSubClamp)
-	{
-		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
-		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
-		__m256i out = _mm256_subs_epu8(src, dest);
-		return out;
-	}
-	else if (BlendT::Mode == (int)BlendModes::AddSrcColorOneMinusSrcColor)
-	{
-		__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
-		__m256i destlo = _mm256_unpacklo_epi8(dest, _mm256_setzero_si256());
-		__m256i desthi = _mm256_unpackhi_epi8(dest, _mm256_setzero_si256());
+		destlo = _mm256_mullo_epi16(destlo, dfactorlo);
+		desthi = _mm256_mullo_epi16(desthi, dfactorhi);
+		srclo = _mm256_mullo_epi16(srclo, sfactorlo);
+		srchi = _mm256_mullo_epi16(srchi, sfactorhi);
 
-		__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
-		__m256i srclo = _mm256_unpacklo_epi8(src, _mm256_setzero_si256());
-		__m256i srchi = _mm256_unpackhi_epi8(src, _mm256_setzero_si256());
+		__m256i outlo, outhi;
+		if (ModeT::BlendOp == STYLEOP_Add)
+		{
+			outlo = _mm256_add_epi16(destlo, srclo);
+			outhi = _mm256_add_epi16(desthi, srchi);
+		}
+		else if (ModeT::BlendOp == STYLEOP_Sub)
+		{
+			outlo = _mm256_sub_epi16(destlo, srclo);
+			outhi = _mm256_sub_epi16(desthi, srchi);
+		}
+		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		{
+			outlo = _mm256_sub_epi16(srclo, destlo);
+			outhi = _mm256_sub_epi16(srchi, desthi);
+		}
 
-		__m256i sfactorlo = _mm256_add_epi16(srclo, _mm256_srli_epi16(srclo, 7)); // 255 -> 256
-		__m256i sfactorhi = _mm256_add_epi16(srchi, _mm256_srli_epi16(srchi, 7)); // 255 -> 256
-
-		__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
-		__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
-
-		__m256i outlo = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(destlo, dfactorlo), _mm256_mullo_epi16(srclo, sfactorlo)), _mm256_set1_epi16(128)), 8);
-		__m256i outhi = _mm256_srli_epi16(_mm256_add_epi16(_mm256_add_epi16(_mm256_mullo_epi16(desthi, dfactorhi), _mm256_mullo_epi16(srchi, sfactorhi)), _mm256_set1_epi16(128)), 8);
-		__m256i out = _mm256_packus_epi16(outlo, outhi);
-		return out;
+		outlo = _mm256_srli_epi16(_mm256_add_epi16(outlo, _mm256_set1_epi16(128)), 8);
+		outhi = _mm256_srli_epi16(_mm256_add_epi16(outhi, _mm256_set1_epi16(128)), 8);
+		return _mm256_packus_epi16(outlo, outhi);
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreFull()
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::StoreFull()
 {
 	_mm256_storeu_si256((__m256i*)Dest, Blend(Dest, _mm256_loadu_si256((const __m256i*)Shader.FragColor)));
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreMasked(uint32_t mask)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::StoreMasked(uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
 	uint32_t *d = Dest;
 
-	if (BlendT::Mode != (int)BlendModes::Opaque)
+	if (!(ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_Zero))
 	{
 		uint32_t tmp[8];
 		uint32_t m = mask;
@@ -484,8 +506,8 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::StoreMasked(uint32_t mask)
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -500,8 +522,8 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -523,8 +545,8 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint3
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -548,8 +570,8 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleA
 	Shader.DynLightColor = _mm256_set_m128i(dynLightColor, dynLightColor);
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -561,8 +583,8 @@ void ScreenBlockDrawerAVX2<BlendT, SamplerT>::SetGradients(int destX, int destY,
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawerAVX2<BlendT, SamplerT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename ModeT>
+void ScreenBlockDrawerAVX2<ModeT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawerAVX2 block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;
