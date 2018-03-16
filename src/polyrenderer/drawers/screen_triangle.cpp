@@ -1562,8 +1562,8 @@ void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDra
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleShaded>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddShaded>::Draw,
-	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::StencilSampler>::Execute,          // Stencil
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampShadedBlend, TriScreenDrawerModes::StencilSampler>::Execute,  // AddStencil
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleStencil>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddStencil>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
