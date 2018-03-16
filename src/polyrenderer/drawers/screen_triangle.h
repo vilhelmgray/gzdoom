@@ -190,6 +190,8 @@ namespace TriScreenDrawerModes
 	struct StyleAddStencil         { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_One,    Flags = STYLEF_ColorIsFixed, SWFlags = 0; };
 	struct StyleAddShaded          { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_One,    Flags = STYLEF_RedIsAlpha | STYLEF_ColorIsFixed, SWFlags = 0; };
 
+	struct StyleOpaqueTranslated   { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_One, BlendDest = STYLEALPHA_Zero, Flags = STYLEF_Alpha1, SWFlags = SWSTYLEF_Translated; };
+	struct StyleSrcColorTranslated { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_InvSrc, Flags = STYLEF_Alpha1, SWFlags = SWSTYLEF_Translated|SWSTYLEF_SrcColorOneMinusSrcColor; };
 	struct StyleNormalTranslated   { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_InvSrc, Flags = STYLEF_Alpha1, SWFlags = SWSTYLEF_Translated; };
 	struct StyleStencilTranslated  { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_InvSrc, Flags = STYLEF_Alpha1 | STYLEF_ColorIsFixed, SWFlags = SWSTYLEF_Translated; };
 	struct StyleTranslucentTranslated { static const int BlendOp = STYLEOP_Add,    BlendSrc = STYLEALPHA_Src, BlendDest = STYLEALPHA_InvSrc, Flags = 0, SWFlags = SWSTYLEF_Translated; };

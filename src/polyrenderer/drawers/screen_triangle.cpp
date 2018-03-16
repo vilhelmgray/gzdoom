@@ -1554,12 +1554,12 @@ void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDra
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtract>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtract>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColor>::Draw,
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,       // TranslatedOpaque
-	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,       // TranslatedMasked
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,     // TranslatedAdd
-	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,     // TranslatedSub
-	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,  // TranslatedRevSub
-	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,  // TranslatedAddSrcColor
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
 	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::ShadedSampler>::Execute,           // Shaded
 	&TriScreenDrawer32<TriScreenDrawerModes::AddClampShadedBlend, TriScreenDrawerModes::ShadedSampler>::Execute,   // AddShaded
 	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::StencilSampler>::Execute,          // Stencil

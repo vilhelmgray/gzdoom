@@ -47,12 +47,26 @@ public:
 	FORCEINLINE __m256i VECTORCALL TextureNearest(const SWVec8fAVX2 &input) const;
 };
 
+class TranslatedSamplerAVX2
+{
+public:
+	uint32_t height;
+	const uint8_t *data;
+	const uint32_t *translation;
+
+	__m256i size;
+
+	FORCEINLINE void VECTORCALL SetSource(const uint8_t *pixels, const uint32_t *translation, int width, int height);
+	FORCEINLINE __m256i VECTORCALL TextureNearest(const SWVec8fAVX2 &input) const;
+};
+
 template<typename ModeT>
 class SWFragmentShaderAVX2
 {
 public:
 	// Uniforms
 	SamplerAVX2 Tex;
+	TranslatedSamplerAVX2 TranslatedTex;
 	float LightMask;
 	float Light;
 	float Shade;
@@ -129,6 +143,35 @@ __m256i SamplerAVX2::TextureNearest(const SWVec8fAVX2 &input) const
 	__m256i offset = _mm256_add_epi32(offsetx, offsety);
 
 	return _mm256_i32gather_epi32((const int*)data, offset, 4);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+void TranslatedSamplerAVX2::SetSource(const uint8_t *pixels, const uint32_t *trans, int w, int h)
+{
+	data = pixels;
+	translation = trans;
+	height = h;
+	size = _mm256_slli_epi16(_mm256_setr_epi16(w, w, w, w, h, h, h, h, w, w, w, w, h, h, h, h), 1);
+}
+
+__m256i TranslatedSamplerAVX2::TextureNearest(const SWVec8fAVX2 &input) const
+{
+	__m256i tmpx = _mm256_srli_epi32(_mm256_slli_epi32(_mm256_cvtps_epi32(_mm256_mul_ps(input.x, _mm256_set1_ps(1 << 24))), 8), 17);
+	__m256i tmpy = _mm256_srli_epi32(_mm256_slli_epi32(_mm256_cvtps_epi32(_mm256_mul_ps(input.y, _mm256_set1_ps(1 << 24))), 8), 17);
+	__m256i tmp = _mm256_packs_epi32(tmpx, tmpy);
+
+	__m256i xy = _mm256_mulhi_epi16(tmp, size);
+	__m256i offsetx = _mm256_mullo_epi32(_mm256_unpacklo_epi16(xy, _mm256_setzero_si256()), _mm256_set1_epi32(height));
+	__m256i offsety = _mm256_unpackhi_epi16(xy, _mm256_setzero_si256());
+	__m256i offset = _mm256_add_epi32(offsetx, offsety);
+
+	uint32_t offsets[8];
+	_mm256_storeu_si256((__m256i*)offsets, offset);
+
+	return _mm256_setr_epi32(
+		translation[data[offsets[0]]], translation[data[offsets[1]]], translation[data[offsets[2]]], translation[data[offsets[3]]],
+		translation[data[offsets[4]]], translation[data[offsets[5]]], translation[data[offsets[6]]], translation[data[offsets[7]]]);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -213,6 +256,10 @@ void SWFragmentShaderAVX2<ModeT>::Run()
 	else if (ModeT::SWFlags & SWSTYLEF_FogBoundary)
 	{
 		fg = _mm256_loadu_si256((const __m256i*)FragColor);
+	}
+	else if (ModeT::SWFlags & SWSTYLEF_Translated)
+	{
+		fg = TranslatedTex.TextureNearest(TexCoord);
 	}
 	else
 	{
@@ -558,6 +605,7 @@ void ScreenBlockDrawerAVX2<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.Light /= 256.0f;
 
 	Shader.Tex.SetSource((const uint32_t *)args->uniforms->TexturePixels(), args->uniforms->TextureWidth(), args->uniforms->TextureHeight());
+	Shader.TranslatedTex.SetSource(args->uniforms->TexturePixels(), (const uint32_t *)args->uniforms->Translation(), args->uniforms->TextureWidth(), args->uniforms->TextureHeight());
 
 	Shader.FillColor = _mm256_set1_epi32(args->uniforms->Color());
 	Shader.SkycapColor = _mm256_unpacklo_epi8(Shader.FillColor, _mm256_setzero_si256());

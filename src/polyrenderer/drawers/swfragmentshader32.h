@@ -39,12 +39,24 @@ public:
 	FORCEINLINE uint32_t TextureNearest(const SWVec4f &input, int i) const;
 };
 
+class TranslatedSampler
+{
+public:
+	uint32_t width;
+	uint32_t height;
+	const uint8_t *data;
+	const uint32_t *translation;
+
+	FORCEINLINE uint32_t TextureNearest(const SWVec4f &input, int i) const;
+};
+
 template<typename ModeT>
 class SWFragmentShader
 {
 public:
 	// Uniforms
 	Sampler Tex;
+	TranslatedSampler TranslatedTex;
 	float LightMask;
 	float Light;
 	float Shade;
@@ -111,6 +123,15 @@ uint32_t Sampler::TextureNearest(const SWVec4f &input, int i) const
 
 /////////////////////////////////////////////////////////////////////////////
 
+uint32_t TranslatedSampler::TextureNearest(const SWVec4f &input, int i) const
+{
+	uint32_t x = ((static_cast<uint32_t>(static_cast<int32_t>(input.x[i] * (1 << 24)) << 8) >> 16) * width) >> 16;
+	uint32_t y = ((static_cast<uint32_t>(static_cast<int32_t>(input.y[i] * (1 << 24)) << 8) >> 16) * height) >> 16;
+	return translation[data[y + x * height]];
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 template<typename ModeT>
 void SWFragmentShader<ModeT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
 {
@@ -151,6 +172,10 @@ void SWFragmentShader<ModeT>::Run()
 		else if (ModeT::SWFlags & SWSTYLEF_FogBoundary)
 		{
 			fg = FragColor[i];
+		}
+		else if (ModeT::SWFlags & SWSTYLEF_Translated)
+		{
+			fg = TranslatedTex.TextureNearest(TexCoord, i);
 		}
 		else
 		{
@@ -477,6 +502,11 @@ void ScreenBlockDrawer<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 	Shader.Tex.data = (const uint32_t *)args->uniforms->TexturePixels();
 	Shader.Tex.width = args->uniforms->TextureWidth();
 	Shader.Tex.height = args->uniforms->TextureHeight();
+
+	Shader.TranslatedTex.data = args->uniforms->TexturePixels();
+	Shader.TranslatedTex.translation = (const uint32_t *)args->uniforms->Translation();
+	Shader.TranslatedTex.width = args->uniforms->TextureWidth();
+	Shader.TranslatedTex.height = args->uniforms->TextureHeight();
 
 	Shader.SkycapColor = args->uniforms->Color();
 	Shader.FillColor = args->uniforms->Color();
