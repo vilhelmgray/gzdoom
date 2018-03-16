@@ -39,7 +39,7 @@ public:
 	FORCEINLINE uint32_t TextureNearest(const SWVec4f &input, int i) const;
 };
 
-template<typename SamplerT>
+template<typename ModeT>
 class SWFragmentShader
 {
 public:
@@ -71,7 +71,7 @@ private:
 	FORCEINLINE uint32_t CalcDynamicLight(int i);
 };
 
-template<typename BlendT, typename SamplerT>
+template<typename ModeT>
 class ScreenBlockDrawer
 {
 public:
@@ -97,7 +97,7 @@ private:
 	uint32_t *Dest;
 	int Pitch;
 
-	SWFragmentShader<SamplerT> Shader;
+	SWFragmentShader<ModeT> Shader;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -111,8 +111,8 @@ uint32_t Sampler::TextureNearest(const SWVec4f &input, int i) const
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename SamplerT>
-void SWFragmentShader<SamplerT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
+template<typename ModeT>
+void SWFragmentShader<ModeT>::SetVaryings(ScreenTriangleStepVariables &pos, const ScreenTriangleStepVariables &step)
 {
 	for (int i = 0; i < 4; i++)
 	{
@@ -135,8 +135,8 @@ void SWFragmentShader<SamplerT>::SetVaryings(ScreenTriangleStepVariables &pos, c
 	}
 }
 
-template<typename SamplerT>
-void SWFragmentShader<SamplerT>::Run()
+template<typename ModeT>
+void SWFragmentShader<ModeT>::Run()
 {
 	using namespace TriScreenDrawerModes;
 
@@ -144,16 +144,25 @@ void SWFragmentShader<SamplerT>::Run()
 	{
 		uint32_t fg;
 		
-		if (SamplerT::Mode == (int)Samplers::Shaded || SamplerT::Mode == (int)Samplers::Stencil || SamplerT::Mode == (int)Samplers::Fill || SamplerT::Mode == (int)Samplers::Fuzz || SamplerT::Mode == (int)Samplers::FogBoundary)
+		if (ModeT::SWFlags & SWSTYLEF_Fill)
 		{
 			fg = FillColor;
+		}
+		else if (ModeT::SWFlags & SWSTYLEF_FogBoundary)
+		{
+			fg = FragColor[i];
 		}
 		else
 		{
 			fg = Tex.TextureNearest(TexCoord, i);
 		}
 
-		if (SamplerT::Mode == (int)Samplers::Skycap)
+		if ((ModeT::Flags & STYLEF_ColorIsFixed) && !(ModeT::SWFlags & SWSTYLEF_Fill))
+		{
+			fg = (fg & 0xff000000) | (FragColor[i] & 0x00ffffff);
+		}
+
+		if (ModeT::SWFlags & SWSTYLEF_Skycap)
 		{
 			int32_t v = static_cast<int32_t>(TexCoord.y[i] * (1 << 24));
 
@@ -207,8 +216,8 @@ void SWFragmentShader<SamplerT>::Run()
 	}
 }
 
-template<typename SamplerT>
-uint32_t SWFragmentShader<SamplerT>::CalcDynamicLight(int j)
+template<typename ModeT>
+uint32_t SWFragmentShader<ModeT>::CalcDynamicLight(int j)
 {
 	uint32_t lit[4];
 
@@ -260,8 +269,8 @@ uint32_t SWFragmentShader<SamplerT>::CalcDynamicLight(int j)
 
 /////////////////////////////////////////////////////////////////////////////
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::StepY()
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::StepY()
 {
 	GradPosY.W += GradStepY.W;
 
@@ -274,87 +283,119 @@ void ScreenBlockDrawer<BlendT, SamplerT>::StepY()
 	Dest += Pitch;
 }
 
-template<typename BlendT, typename SamplerT>
-uint32_t ScreenBlockDrawer<BlendT, SamplerT>::Blend(uint32_t *destptr, uint32_t src)
+template<typename ModeT>
+uint32_t ScreenBlockDrawer<ModeT>::Blend(uint32_t *destptr, uint32_t src)
 {
 	using namespace TriScreenDrawerModes;
 
-	if (BlendT::Mode == (int)BlendModes::Opaque)
+	if (ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_Zero)
 	{
 		return src;
 	}
-	else if (BlendT::Mode == (int)BlendModes::Masked)
+	else  if (ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_One)
 	{
-		uint32_t dest = *destptr;
-		uint32_t sfactor = APART(src); sfactor += sfactor >> 7; // 255 -> 256
-		uint32_t dfactor = 256 - sfactor;
-		uint32_t out_r = (RPART(dest) * dfactor + RPART(src) * sfactor + 128) >> 8;
-		uint32_t out_g = (GPART(dest) * dfactor + GPART(src) * sfactor + 128) >> 8;
-		uint32_t out_b = (BPART(dest) * dfactor + BPART(src) * sfactor + 128) >> 8;
-		uint32_t out_a = (APART(dest) * dfactor + APART(src) * sfactor + 128) >> 8;
-		return MAKEARGB(out_a, out_r, out_g, out_b);
+		if (ModeT::BlendOp == STYLEOP_Add)
+		{
+			uint32_t dest = *destptr;
+			uint32_t out_r = MIN<uint32_t>(RPART(dest) + RPART(src), 255);
+			uint32_t out_g = MIN<uint32_t>(GPART(dest) + GPART(src), 255);
+			uint32_t out_b = MIN<uint32_t>(BPART(dest) + BPART(src), 255);
+			uint32_t out_a = MIN<uint32_t>(APART(dest) + APART(src), 255);
+			return MAKEARGB(out_a, out_r, out_g, out_b);
+		}
+		else if (ModeT::BlendOp == STYLEOP_Sub)
+		{
+			uint32_t dest = *destptr;
+			uint32_t out_r = MAX<uint32_t>(RPART(dest) - RPART(src), 0);
+			uint32_t out_g = MAX<uint32_t>(GPART(dest) - GPART(src), 0);
+			uint32_t out_b = MAX<uint32_t>(BPART(dest) - BPART(src), 0);
+			uint32_t out_a = MAX<uint32_t>(APART(dest) - APART(src), 0);
+			return MAKEARGB(out_a, out_r, out_g, out_b);
+		}
+		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		{
+			uint32_t dest = *destptr;
+			uint32_t out_r = MAX<uint32_t>(RPART(src) - RPART(dest), 0);
+			uint32_t out_g = MAX<uint32_t>(GPART(src) - GPART(dest), 0);
+			uint32_t out_b = MAX<uint32_t>(BPART(src) - BPART(dest), 0);
+			uint32_t out_a = MAX<uint32_t>(APART(src) - APART(dest), 0);
+			return MAKEARGB(out_a, out_r, out_g, out_b);
+		}
 	}
-	else if (BlendT::Mode == (int)BlendModes::AddClamp)
+	else
 	{
-		uint32_t dest = *destptr;
-		uint32_t out_r = MIN<uint32_t>(RPART(dest) + RPART(src), 255);
-		uint32_t out_g = MIN<uint32_t>(GPART(dest) + GPART(src), 255);
-		uint32_t out_b = MIN<uint32_t>(BPART(dest) + BPART(src), 255);
-		uint32_t out_a = MIN<uint32_t>(APART(dest) + APART(src), 255);
-		return MAKEARGB(out_a, out_r, out_g, out_b);
-	}
-	else if (BlendT::Mode == (int)BlendModes::SubClamp)
-	{
-		uint32_t dest = *destptr;
-		uint32_t out_r = MAX<uint32_t>(RPART(dest) - RPART(src), 0);
-		uint32_t out_g = MAX<uint32_t>(GPART(dest) - GPART(src), 0);
-		uint32_t out_b = MAX<uint32_t>(BPART(dest) - BPART(src), 0);
-		uint32_t out_a = MAX<uint32_t>(APART(dest) - APART(src), 0);
-		return MAKEARGB(out_a, out_r, out_g, out_b);
-	}
-	else if (BlendT::Mode == (int)BlendModes::RevSubClamp)
-	{
-		uint32_t dest = *destptr;
-		uint32_t out_r = MAX<uint32_t>(RPART(src) - RPART(dest), 0);
-		uint32_t out_g = MAX<uint32_t>(GPART(src) - GPART(dest), 0);
-		uint32_t out_b = MAX<uint32_t>(BPART(src) - BPART(dest), 0);
-		uint32_t out_a = MAX<uint32_t>(APART(src) - APART(dest), 0);
-		return MAKEARGB(out_a, out_r, out_g, out_b);
-	}
-	else if (BlendT::Mode == (int)BlendModes::AddSrcColorOneMinusSrcColor)
-	{
-		uint32_t dest = *destptr;
-		uint32_t sfactor_r = RPART(src); sfactor_r += sfactor_r >> 7; // 255 -> 256
-		uint32_t sfactor_g = GPART(src); sfactor_g += sfactor_g >> 7; // 255 -> 256
-		uint32_t sfactor_b = BPART(src); sfactor_b += sfactor_b >> 7; // 255 -> 256
-		uint32_t sfactor_a = APART(src); sfactor_a += sfactor_a >> 7; // 255 -> 256
-		uint32_t dfactor_r = 256 - sfactor_r;
-		uint32_t dfactor_g = 256 - sfactor_g;
-		uint32_t dfactor_b = 256 - sfactor_b;
-		uint32_t dfactor_a = 256 - sfactor_a;
-		uint32_t out_r = (RPART(dest) * dfactor_r + RPART(src) * sfactor_r + 128) >> 8;
-		uint32_t out_g = (GPART(dest) * dfactor_g + GPART(src) * sfactor_g + 128) >> 8;
-		uint32_t out_b = (BPART(dest) * dfactor_b + BPART(src) * sfactor_b + 128) >> 8;
-		uint32_t out_a = (APART(dest) * dfactor_a + APART(src) * sfactor_a + 128) >> 8;
-		return MAKEARGB(out_a, out_r, out_g, out_b);
+		if (ModeT::SWFlags & SWSTYLEF_SrcColorOneMinusSrcColor)
+		{
+			uint32_t dest = *destptr;
+			uint32_t sfactor_r = RPART(src); sfactor_r += sfactor_r >> 7; // 255 -> 256
+			uint32_t sfactor_g = GPART(src); sfactor_g += sfactor_g >> 7; // 255 -> 256
+			uint32_t sfactor_b = BPART(src); sfactor_b += sfactor_b >> 7; // 255 -> 256
+			uint32_t sfactor_a = APART(src); sfactor_a += sfactor_a >> 7; // 255 -> 256
+			uint32_t dfactor_r = 256 - sfactor_r;
+			uint32_t dfactor_g = 256 - sfactor_g;
+			uint32_t dfactor_b = 256 - sfactor_b;
+			uint32_t dfactor_a = 256 - sfactor_a;
+			uint32_t out_r = (RPART(dest) * dfactor_r + RPART(src) * sfactor_r + 128) >> 8;
+			uint32_t out_g = (GPART(dest) * dfactor_g + GPART(src) * sfactor_g + 128) >> 8;
+			uint32_t out_b = (BPART(dest) * dfactor_b + BPART(src) * sfactor_b + 128) >> 8;
+			uint32_t out_a = (APART(dest) * dfactor_a + APART(src) * sfactor_a + 128) >> 8;
+			return MAKEARGB(out_a, out_r, out_g, out_b);
+		}
+		else
+		{
+			uint32_t dest = *destptr;
+			uint32_t sfactor = APART(src); sfactor += sfactor >> 7; // 255 -> 256
+			uint32_t dfactor = 256 - sfactor;
+			uint32_t src_r = RPART(src) * sfactor;
+			uint32_t src_g = GPART(src) * sfactor;
+			uint32_t src_b = BPART(src) * sfactor;
+			uint32_t src_a = APART(src) * sfactor;
+			uint32_t dest_r = RPART(dest) * dfactor;
+			uint32_t dest_g = GPART(dest) * dfactor;
+			uint32_t dest_b = BPART(dest) * dfactor;
+			uint32_t dest_a = APART(dest) * dfactor;
+			uint32_t out_r, out_g, out_b, out_a;
+			if (ModeT::BlendOp == STYLEOP_Add)
+			{
+				out_r = (dest_r + src_r + 128) >> 8;
+				out_g = (dest_g + src_g + 128) >> 8;
+				out_b = (dest_b + src_b + 128) >> 8;
+				out_a = (dest_a + src_a + 128) >> 8;
+			}
+			else if (ModeT::BlendOp == STYLEOP_Sub)
+			{
+				out_r = MAX<int32_t>(static_cast<int16_t>(dest_r - src_r + 128) >> 8, 0);
+				out_g = MAX<int32_t>(static_cast<int16_t>(dest_g - src_g + 128) >> 8, 0);
+				out_b = MAX<int32_t>(static_cast<int16_t>(dest_b - src_b + 128) >> 8, 0);
+				out_a = MAX<int32_t>(static_cast<int16_t>(dest_a - src_a + 128) >> 8, 0);
+			}
+			else //if (ModeT::BlendOp == STYLEOP_RevSub)
+			{
+				out_r = MAX<int32_t>(static_cast<int16_t>(src_r - dest_r + 128) >> 8, 0);
+				out_g = MAX<int32_t>(static_cast<int16_t>(src_g - dest_g + 128) >> 8, 0);
+				out_b = MAX<int32_t>(static_cast<int16_t>(src_b - dest_b + 128) >> 8, 0);
+				out_a = MAX<int32_t>(static_cast<int16_t>(src_a - dest_a + 128) >> 8, 0);
+			}
+			return MAKEARGB(out_a, out_r, out_g, out_b);
+		}
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::StoreFull(int offset)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::StoreFull(int offset)
 {
 	uint32_t *d = Dest + offset;
 	for (int i = 0; i < 4; i++)
 		d[i] = Blend(d + i, Shader.FragColor[i]);
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::StoreMasked(int offset, uint32_t mask)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::StoreMasked(int offset, uint32_t mask)
 {
 	using namespace TriScreenDrawerModes;
 
 	uint32_t *d = Dest + offset;
-	if (BlendT::Mode != (int)BlendModes::Opaque)
+	if (!(ModeT::BlendSrc == STYLEALPHA_One && ModeT::BlendDest == STYLEALPHA_Zero))
 	{
 		uint32_t m = mask;
 		for (int i = 0; i < 4; i++)
@@ -373,8 +414,8 @@ void ScreenBlockDrawer<BlendT, SamplerT>::StoreMasked(int offset, uint32_t mask)
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::ProcessMaskRange(uint32_t mask)
 {
 	for (int yy = 0; yy < 4; yy++)
 	{
@@ -394,8 +435,8 @@ void ScreenBlockDrawer<BlendT, SamplerT>::ProcessMaskRange(uint32_t mask)
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::ProcessBlock(uint32_t mask0, uint32_t mask1)
 {
 	if (mask0 == 0xffffffff && mask1 == 0xffffffff)
 	{
@@ -421,8 +462,8 @@ void ScreenBlockDrawer<BlendT, SamplerT>::ProcessBlock(uint32_t mask0, uint32_t 
 	}
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs *args)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 {
 	uint32_t maskvalue = args->uniforms->FixedLight() ? 0 : 0xffffffff;
 	float *maskvaluef = (float*)&maskvalue;
@@ -451,8 +492,8 @@ void ScreenBlockDrawer<BlendT, SamplerT>::SetUniforms(const TriDrawTriangleArgs 
 	Shader.DynLightColor[3] = APART(args->uniforms->DynLightColor());
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::SetGradients(int destX, int destY, const ShadedTriVertex &v1, const ScreenTriangleStepVariables &gradientX, const ScreenTriangleStepVariables &gradientY)
 {
 	GradStepX = gradientX;
 	GradStepY = gradientY;
@@ -464,8 +505,8 @@ void ScreenBlockDrawer<BlendT, SamplerT>::SetGradients(int destX, int destY, con
 	GradPosY.WorldZ = v1.worldZ * v1.w + GradStepX.WorldZ * (destX - v1.x) + GradStepY.WorldZ * (destY - v1.y);
 }
 
-template<typename BlendT, typename SamplerT>
-void ScreenBlockDrawer<BlendT, SamplerT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
+template<typename ModeT>
+void ScreenBlockDrawer<ModeT>::Draw(int destX, int destY, uint32_t mask0, uint32_t mask1, const TriDrawTriangleArgs *args)
 {
 	ScreenBlockDrawer block;
 	block.Dest = ((uint32_t *)args->dest) + destX + destY * args->pitch;
