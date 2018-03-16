@@ -269,7 +269,10 @@ void SWFragmentShaderAVX2<ModeT>::Run()
 	if ((ModeT::Flags & STYLEF_ColorIsFixed) && !(ModeT::SWFlags & SWSTYLEF_Fill))
 	{
 		__m256i rgbmask = _mm256_set1_epi32(0x00ffffff);
-		fg = _mm256_or_si256(_mm256_and_si256(rgbmask, fg), _mm256_andnot_si256(rgbmask, FillColor));
+		if (ModeT::Flags & STYLEF_RedIsAlpha)
+			fg = _mm256_or_si256(_mm256_andnot_si256(rgbmask, _mm256_slli_epi32(fg, 8)), _mm256_and_si256(rgbmask, FillColor));
+		else
+			fg = _mm256_or_si256(_mm256_andnot_si256(rgbmask, fg), _mm256_and_si256(rgbmask, FillColor));
 	}
 
 	if (ModeT::SWFlags & SWSTYLEF_Skycap)

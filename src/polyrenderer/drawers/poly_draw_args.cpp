@@ -164,8 +164,7 @@ void PolyDrawArgs::DrawElements(PolyRenderThread *thread, const TriVertex *verti
 
 void PolyDrawArgs::SetStyle(const FRenderStyle &renderstyle, double alpha, uint32_t fillcolor, uint32_t translationID, FTexture *tex, bool fullbright)
 {
-	bool forcePal = (renderstyle == LegacyRenderStyles[STYLE_Shaded] || renderstyle == LegacyRenderStyles[STYLE_AddShaded]);
-	SetTexture(tex, translationID, forcePal);
+	SetTexture(tex, translationID, false);
 
 	if (renderstyle == LegacyRenderStyles[STYLE_Normal] || (r_drawfuzz == 0 && renderstyle == LegacyRenderStyles[STYLE_OptFuzzy]))
 	{

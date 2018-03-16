@@ -184,7 +184,10 @@ void SWFragmentShader<ModeT>::Run()
 
 		if ((ModeT::Flags & STYLEF_ColorIsFixed) && !(ModeT::SWFlags & SWSTYLEF_Fill))
 		{
-			fg = (fg & 0xff000000) | (FragColor[i] & 0x00ffffff);
+			if (ModeT::Flags & STYLEF_RedIsAlpha)
+				fg = ((fg << 8) & 0xff000000) | (FillColor & 0x00ffffff);
+			else
+				fg = (fg & 0xff000000) | (FillColor & 0x00ffffff);
 		}
 
 		if (ModeT::SWFlags & SWSTYLEF_Skycap)
