@@ -639,6 +639,12 @@ elseif( FLUIDSYNTH_FOUND )
 	add_definitions( -DHAVE_FLUIDSYNTH )
 endif()
 
+option( SEND_ANON_STATS "Enable sending of anonymous hardware statistics" ON )
+
+if( NOT SEND_ANON_STATS )
+	add_definitions( -DNO_SEND_STATS )
+endif()
+
 # Project files should be aware of the header files. We can GLOB these since
 # there's generally a new cpp for every header so this file will get changed
 if( WIN32 )
@@ -660,8 +666,6 @@ file( GLOB HEADER_FILES
 	g_inventory/*.h
 	intermission/*.h
 	menu/*.h
-	sound/oplsynth/*.h
-	sound/oplsynth/dosbox/*.h
 	posix/*.h
 	posix/cocoa/*.h
 	posix/sdl/*.h
@@ -677,6 +681,9 @@ file( GLOB HEADER_FILES
 	scripting/decorate/*.h
 	scripting/zscript/*.h
 	scripting/vm/*.h
+	sound/midisources/*.h
+	sound/oplsynth/*.h
+	sound/oplsynth/dosbox/*.h
 	sound/timidity/*.h
 	sound/timiditypp/*.h
 	sound/wildmidi/*.h
@@ -873,6 +880,7 @@ set (PCH_SOURCES
 	d_dehacked.cpp
 	d_iwad.cpp
 	d_main.cpp
+	d_stats.cpp
 	d_net.cpp
 	d_netinfo.cpp
 	d_protocol.cpp
@@ -886,6 +894,7 @@ set (PCH_SOURCES
 	edata.cpp
 	f_wipe.cpp
 	files.cpp
+	files_decompress.cpp
 	g_doomedmap.cpp
 	g_game.cpp
 	g_hub.cpp
