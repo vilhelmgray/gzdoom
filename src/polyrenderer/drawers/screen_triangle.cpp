@@ -1521,86 +1521,134 @@ void ScreenTriangle::DrawSpan8(int y, int x0, int x1, const TriDrawTriangleArgs 
 void(*ScreenTriangle::TriDrawers8[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
 	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleOpaque>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleNormal>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAdd>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtract>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtract>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSrcColor>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleShaded>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddShaded>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleStencil>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddStencil>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
 	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSkycap>::Draw,
-	&TriScreenDrawer8<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::FuzzSampler>::Execute,            // Fuzz
 	&TriScreenDrawer8<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFogBoundary>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSrcColor>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFill>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleNormal>::Draw,
+	&TriScreenDrawer8<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::FuzzSampler>::Execute,            // Fuzz
+	//&ScreenBlockDrawer8<TriScreenDrawerModes::StyleFuzzy>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleStencil>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleTranslucent>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAdd>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleShaded>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleTranslucentStencil>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtract>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddStencil>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddShaded>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleStencilTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleTranslucentTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleShadedTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleTranslucentStencilTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleShadowTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddStencilTranslated>::Draw,
+	&ScreenBlockDrawer8<TriScreenDrawerModes::StyleAddShadedTranslated>::Draw
 };
 
 #if defined(_MSC_VER)
 void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleOpaque>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleNormal>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAdd>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtract>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtract>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColor>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleShaded>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddShaded>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleStencil>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddStencil>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
-	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
 	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSkycap>::Draw,
-	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::FuzzSampler>::Execute,             // Fuzz
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute       // FogBoundary
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFogBoundary>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColor>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFill>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleNormal>::Draw,
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleFuzzy>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleStencil>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleTranslucent>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAdd>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleShaded>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleTranslucentStencil>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtract>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddStencil>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddShaded>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleStencilTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleTranslucentTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleShadedTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleTranslucentStencilTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleShadowTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddStencilTranslated>::Draw,
+	&ScreenBlockDrawerAVX2<TriScreenDrawerModes::StyleAddShadedTranslated>::Draw
+};
+#elif !defined(NO_SSE)
+void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
+{
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleOpaque>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleSkycap>::Draw,
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleFogBoundary>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleSrcColor>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleFill>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleNormal>::Draw,
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleFuzzy>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleStencil>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleTranslucent>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAdd>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleShaded>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleTranslucentStencil>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleSubtract>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAddStencil>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAddShaded>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleStencilTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleTranslucentTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAddTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleShadedTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleTranslucentStencilTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleShadowTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAddStencilTranslated>::Draw,
+	&ScreenBlockDrawerSSE2<TriScreenDrawerModes::StyleAddShadedTranslated>::Draw
 };
 #else
 void(*ScreenTriangle::TriDrawers32[])(int, int, uint32_t, uint32_t, const TriDrawTriangleArgs *) =
 {
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureOpaque
-	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TextureSampler>::Execute,         // TextureMasked
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureAdd
-	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,       // TextureSub
-	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::TextureSampler>::Execute,    // TextureRevSub
-	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::TextureSampler>::Execute,    // TextureAddSrcColor
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,      // TranslatedOpaque
-	&TriScreenDrawer32<TriScreenDrawerModes::MaskedBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,      // TranslatedMasked
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,    // TranslatedAdd
-	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute,    // TranslatedSub
-	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::TranslatedSampler>::Execute, // TranslatedRevSub
-	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::TranslatedSampler>::Execute, // TranslatedAddSrcColor
-	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::ShadedSampler>::Execute,          // Shaded
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampShadedBlend, TriScreenDrawerModes::ShadedSampler>::Execute,  // AddShaded
-	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::StencilSampler>::Execute,         // Stencil
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampShadedBlend, TriScreenDrawerModes::StencilSampler>::Execute, // AddStencil
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FillSampler>::Execute,            // FillOpaque
-	&TriScreenDrawer32<TriScreenDrawerModes::AddClampBlend, TriScreenDrawerModes::FillSampler>::Execute,          // FillAdd
-	&TriScreenDrawer32<TriScreenDrawerModes::SubClampBlend, TriScreenDrawerModes::FillSampler>::Execute,          // FillSub
-	&TriScreenDrawer32<TriScreenDrawerModes::RevSubClampBlend, TriScreenDrawerModes::FillSampler>::Execute,       // FillRevSub
-	&TriScreenDrawer32<TriScreenDrawerModes::AddSrcColorBlend, TriScreenDrawerModes::FillSampler>::Execute,       // FillAddSrcColor
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::SkycapSampler>::Execute,          // Skycap
-	&TriScreenDrawer32<TriScreenDrawerModes::ShadedBlend, TriScreenDrawerModes::FuzzSampler>::Execute,            // Fuzz
-	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute      // FogBoundary
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleOpaque>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleSkycap>::Draw,
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawer32<TriScreenDrawerModes::StyleFogBoundary>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleSrcColor>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleFill>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleNormal>::Draw,
+	&TriScreenDrawer32<TriScreenDrawerModes::OpaqueBlend, TriScreenDrawerModes::FogBoundarySampler>::Execute,     // FogBoundary
+	//&ScreenBlockDrawer32<TriScreenDrawerModes::StyleFuzzy>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleStencil>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleTranslucent>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAdd>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleShaded>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleTranslucentStencil>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleSubtract>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAddStencil>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAddShaded>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleOpaqueTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleSrcColorTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleNormalTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleStencilTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleTranslucentTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAddTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleShadedTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleTranslucentStencilTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleShadowTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleSubtractTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAddStencilTranslated>::Draw,
+	&ScreenBlockDrawer32<TriScreenDrawerModes::StyleAddShadedTranslated>::Draw
 };
 #endif
 

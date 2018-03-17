@@ -194,7 +194,7 @@ namespace swrenderer
 		args.SetTransform(transform);
 		args.SetFaceCullCCW(true);
 		args.SetClipPlane(0, PolyClipPlane());
-		args.SetStyle(TriBlendMode::TextureOpaque);
+		args.SetStyle(TriBlendMode::Opaque);
 
 		if (Thread->Viewport->RenderTarget->IsBgra())
 			args.SetTexture((const uint8_t *)SkinTexture->GetPixelsBgra(), SkinTexture->GetWidth(), SkinTexture->GetHeight());
@@ -232,7 +232,7 @@ namespace swrenderer
 		args.SetTransform(transform);
 		args.SetFaceCullCCW(true);
 		args.SetClipPlane(0, PolyClipPlane());
-		args.SetStyle(TriBlendMode::TextureOpaque);
+		args.SetStyle(TriBlendMode::Opaque);
 
 		if (Thread->Viewport->RenderTarget->IsBgra())
 			args.SetTexture((const uint8_t *)SkinTexture->GetPixelsBgra(), SkinTexture->GetWidth(), SkinTexture->GetHeight());

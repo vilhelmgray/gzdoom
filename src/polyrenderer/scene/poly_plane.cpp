@@ -82,7 +82,7 @@ void RenderPolyPlane::RenderNormal(PolyRenderThread *thread, const TriMatrix &wo
 		args.SetWriteStencil(true, stencilValue + 1);
 		args.SetClipPlane(0, clipPlane);
 		args.SetTexture(tex);
-		args.SetStyle(TriBlendMode::TextureOpaque);
+		args.SetStyle(TriBlendMode::Opaque);
 		args.DrawArray(thread, vertices, fakeflat.Subsector->numlines, PolyDrawMode::TriangleFan);
 	}
 	else
@@ -558,13 +558,11 @@ void Render3DFloorPlane::Render(PolyRenderThread *thread, const TriMatrix &world
 	args.SetTransform(&worldToClip);
 	if (!Masked)
 	{
-		args.SetStyle(TriBlendMode::TextureOpaque);
+		args.SetStyle(TriBlendMode::Opaque);
 	}
 	else
 	{
-		double srcalpha = MIN(Alpha, 1.0);
-		double destalpha = Additive ? 1.0 : 1.0 - srcalpha;
-		args.SetStyle(TriBlendMode::TextureAdd, srcalpha, destalpha);
+		args.SetStyle(Additive ? TriBlendMode::Add : TriBlendMode::Normal, MIN(Alpha, 1.0));
 		args.SetDepthTest(true);
 		args.SetWriteDepth(true);
 		args.SetWriteStencil(false);

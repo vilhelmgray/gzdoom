@@ -146,7 +146,7 @@ void PolyModelRenderer::DrawArrays(int start, int count)
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
-	args.SetStyle(TriBlendMode::TextureOpaque);
+	args.SetStyle(TriBlendMode::Opaque);
 	args.SetTexture(SkinTexture);
 	args.SetDepthTest(true);
 	args.SetWriteDepth(true);
@@ -180,7 +180,7 @@ void PolyModelRenderer::DrawElements(int numIndices, size_t offset)
 	args.SetFaceCullCCW(true);
 	args.SetStencilTestValue(StencilValue);
 	args.SetClipPlane(0, PolyClipPlane());
-	args.SetStyle(TriBlendMode::TextureOpaque);
+	args.SetStyle(TriBlendMode::Opaque);
 	args.SetTexture(SkinTexture);
 	args.SetDepthTest(true);
 	args.SetWriteDepth(true);

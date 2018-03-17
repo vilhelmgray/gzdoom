@@ -110,6 +110,6 @@ void RenderPolyWallSprite::Render(PolyRenderThread *thread, const TriMatrix &wor
 	args.SetDepthTest(true);
 	args.SetWriteDepth(false);
 	args.SetWriteStencil(false);
-	args.SetStyle(TriBlendMode::TextureMasked);
+	args.SetStyle(TriBlendMode::Normal);
 	args.DrawArray(thread, vertices, 4, PolyDrawMode::TriangleFan);
 }

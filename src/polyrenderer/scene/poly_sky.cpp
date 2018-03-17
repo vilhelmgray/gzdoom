@@ -120,7 +120,7 @@ void PolySkyDome::RenderCapColorRow(PolyRenderThread *thread, PolyDrawArgs &args
 
 	args.SetFaceCullCCW(bottomCap);
 	args.SetColor(solid, palsolid);
-	args.SetStyle(TriBlendMode::FillOpaque);
+	args.SetStyle(TriBlendMode::Fill);
 	args.DrawArray(thread, &mVertices[mPrimStart[row]], mPrimStart[row + 1] - mPrimStart[row], PolyDrawMode::TriangleFan);
 }
 

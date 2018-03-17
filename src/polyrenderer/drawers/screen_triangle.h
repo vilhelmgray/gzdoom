@@ -119,6 +119,38 @@ class RectDrawArgs;
 
 enum class TriBlendMode
 {
+	Opaque,
+	Skycap,
+	FogBoundary,
+	SrcColor,
+	Fill,
+	Normal,
+	Fuzzy,
+	Stencil,
+	Translucent,
+	Add,
+	Shaded,
+	TranslucentStencil,
+	Shadow,
+	Subtract,
+	AddStencil,
+	AddShaded,
+	OpaqueTranslated,
+	SrcColorTranslated,
+	NormalTranslated,
+	StencilTranslated,
+	TranslucentTranslated,
+	AddTranslated,
+	ShadedTranslated,
+	TranslucentStencilTranslated,
+	ShadowTranslated,
+	SubtractTranslated,
+	AddStencilTranslated,
+	AddShadedTranslated
+};
+
+enum class RectBlendMode
+{
 	TextureOpaque,
 	TextureMasked,
 	TextureAdd,
