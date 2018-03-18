@@ -77,6 +77,7 @@ public:
 	__m256i DynLightColor;
 	__m256i SkycapColor;
 	__m256i FillColor;
+	__m256i Alpha;
 
 	// In variables
 	__m256 GradW;
@@ -275,6 +276,13 @@ void SWFragmentShaderAVX2<ModeT>::Run()
 			fg = _mm256_or_si256(_mm256_andnot_si256(rgbmask, fg), _mm256_and_si256(rgbmask, FillColor));
 	}
 
+	if (!(ModeT::Flags & STYLEF_Alpha1))
+	{
+		__m256i a = _mm256_srli_epi32(fg, 24);
+		a = _mm256_srli_epi32(_mm256_mullo_epi16(a, Alpha), 8);
+		fg = _mm256_or_si256(_mm256_and_si256(fg, _mm256_set1_epi32(0x00ffffff)), _mm256_slli_epi32(a, 24));
+	}
+
 	if (ModeT::SWFlags & SWSTYLEF_Skycap)
 	{
 		__m256i v = _mm256_cvtps_epi32(_mm256_mul_ps(TexCoord.y, _mm256_set1_ps(1 << 24)));
@@ -452,14 +460,14 @@ __m256i ScreenBlockDrawerAVX2<ModeT>::Blend(uint32_t *destptr, __m256i src)
 			__m256i out = _mm256_adds_epu8(dest, src);
 			return out;
 		}
-		else if (ModeT::BlendOp == STYLEOP_Sub)
+		else if (ModeT::BlendOp == STYLEOP_RevSub)
 		{
 			__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
 			__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
 			__m256i out = _mm256_subs_epu8(dest, src);
 			return out;
 		}
-		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		else //if (ModeT::BlendOp == STYLEOP_Sub)
 		{
 			__m256i dest = _mm256_loadu_si256((__m256i*)destptr);
 			__m256i src = _mm256_loadu_si256((const __m256i*)Shader.FragColor);
@@ -489,34 +497,45 @@ __m256i ScreenBlockDrawerAVX2<ModeT>::Blend(uint32_t *destptr, __m256i src)
 		}
 		sfactorlo = _mm256_add_epi16(sfactorlo, _mm256_srli_epi16(sfactorlo, 7)); // 255 -> 256
 		sfactorhi = _mm256_add_epi16(sfactorhi, _mm256_srli_epi16(sfactorhi, 7)); // 255 -> 256
-
-		__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
-		__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
-
-		destlo = _mm256_mullo_epi16(destlo, dfactorlo);
-		desthi = _mm256_mullo_epi16(desthi, dfactorhi);
 		srclo = _mm256_mullo_epi16(srclo, sfactorlo);
 		srchi = _mm256_mullo_epi16(srchi, sfactorhi);
+
+		if (ModeT::BlendDest == STYLEALPHA_One)
+		{
+			srclo = _mm256_srli_epi16(srclo, 1);
+			srchi = _mm256_srli_epi16(srchi, 1);
+			destlo = _mm256_slli_epi16(destlo, 7);
+			desthi = _mm256_slli_epi16(desthi, 7);
+		}
+		else
+		{
+			__m256i dfactorlo = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorlo);
+			__m256i dfactorhi = _mm256_sub_epi16(_mm256_set1_epi16(256), sfactorhi);
+			srclo = _mm256_srli_epi16(srclo, 1);
+			srchi = _mm256_srli_epi16(srchi, 1);
+			destlo = _mm256_srli_epi16(_mm256_mullo_epi16(destlo, dfactorlo), 1);
+			desthi = _mm256_srli_epi16(_mm256_mullo_epi16(desthi, dfactorhi), 1);
+		}
 
 		__m256i outlo, outhi;
 		if (ModeT::BlendOp == STYLEOP_Add)
 		{
-			outlo = _mm256_add_epi16(destlo, srclo);
-			outhi = _mm256_add_epi16(desthi, srchi);
+			outlo = _mm256_adds_epi16(destlo, srclo);
+			outhi = _mm256_adds_epi16(desthi, srchi);
 		}
-		else if (ModeT::BlendOp == STYLEOP_Sub)
+		else if (ModeT::BlendOp == STYLEOP_RevSub)
 		{
-			outlo = _mm256_sub_epi16(destlo, srclo);
-			outhi = _mm256_sub_epi16(desthi, srchi);
+			outlo = _mm256_subs_epi16(destlo, srclo);
+			outhi = _mm256_subs_epi16(desthi, srchi);
 		}
-		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		else //if (ModeT::BlendOp == STYLEOP_Sub)
 		{
-			outlo = _mm256_sub_epi16(srclo, destlo);
-			outhi = _mm256_sub_epi16(srchi, desthi);
+			outlo = _mm256_subs_epi16(srclo, destlo);
+			outhi = _mm256_subs_epi16(srchi, desthi);
 		}
 
-		outlo = _mm256_srli_epi16(_mm256_add_epi16(outlo, _mm256_set1_epi16(128)), 8);
-		outhi = _mm256_srli_epi16(_mm256_add_epi16(outhi, _mm256_set1_epi16(128)), 8);
+		outlo = _mm256_srai_epi16(_mm256_adds_epi16(outlo, _mm256_set1_epi16(64)), 7);
+		outhi = _mm256_srai_epi16(_mm256_adds_epi16(outhi, _mm256_set1_epi16(64)), 7);
 		return _mm256_packus_epi16(outlo, outhi);
 	}
 }
@@ -612,6 +631,7 @@ void ScreenBlockDrawerAVX2<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 
 	Shader.FillColor = _mm256_set1_epi32(args->uniforms->Color());
 	Shader.SkycapColor = _mm256_unpacklo_epi8(Shader.FillColor, _mm256_setzero_si256());
+	Shader.Alpha = _mm256_set1_epi32(args->uniforms->SrcAlpha());
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();

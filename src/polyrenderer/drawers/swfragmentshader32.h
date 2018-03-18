@@ -67,6 +67,7 @@ public:
 	uint32_t DynLightColor[4];
 	uint32_t SkycapColor;
 	uint32_t FillColor;
+	uint32_t Alpha;
 
 	// In variables
 	float GradW[4];
@@ -188,6 +189,13 @@ void SWFragmentShader32<ModeT>::Run()
 				fg = ((fg << 8) & 0xff000000) | (FillColor & 0x00ffffff);
 			else
 				fg = (fg & 0xff000000) | (FillColor & 0x00ffffff);
+		}
+
+		if (!(ModeT::Flags & STYLEF_Alpha1))
+		{
+			uint32_t a = fg >> 24;
+			a = (a * Alpha) >> 8;
+			fg = (fg & 0x00ffffff) | (a << 24);
 		}
 
 		if (ModeT::SWFlags & SWSTYLEF_Skycap)
@@ -373,36 +381,60 @@ uint32_t ScreenBlockDrawer32<ModeT>::Blend(uint32_t *destptr, uint32_t src)
 		{
 			uint32_t dest = *destptr;
 			uint32_t sfactor = APART(src); sfactor += sfactor >> 7; // 255 -> 256
-			uint32_t dfactor = 256 - sfactor;
 			uint32_t src_r = RPART(src) * sfactor;
 			uint32_t src_g = GPART(src) * sfactor;
 			uint32_t src_b = BPART(src) * sfactor;
 			uint32_t src_a = APART(src) * sfactor;
-			uint32_t dest_r = RPART(dest) * dfactor;
-			uint32_t dest_g = GPART(dest) * dfactor;
-			uint32_t dest_b = BPART(dest) * dfactor;
-			uint32_t dest_a = APART(dest) * dfactor;
+			uint32_t dest_r = RPART(dest);
+			uint32_t dest_g = GPART(dest);
+			uint32_t dest_b = BPART(dest);
+			uint32_t dest_a = APART(dest);
+			if (ModeT::BlendDest == STYLEALPHA_One)
+			{
+				dest_r <<= 8;
+				dest_g <<= 8;
+				dest_b <<= 8;
+				dest_a <<= 8;
+			}
+			else
+			{
+				uint32_t dfactor = 256 - sfactor;
+				dest_r *= dfactor;
+				dest_g *= dfactor;
+				dest_b *= dfactor;
+				dest_a *= dfactor;
+			}
 			uint32_t out_r, out_g, out_b, out_a;
 			if (ModeT::BlendOp == STYLEOP_Add)
 			{
-				out_r = (dest_r + src_r + 128) >> 8;
-				out_g = (dest_g + src_g + 128) >> 8;
-				out_b = (dest_b + src_b + 128) >> 8;
-				out_a = (dest_a + src_a + 128) >> 8;
+				if (ModeT::BlendDest == STYLEALPHA_One)
+				{
+					out_r = MIN<int32_t>((dest_r + src_r + 128) >> 8, 255);
+					out_g = MIN<int32_t>((dest_g + src_g + 128) >> 8, 255);
+					out_b = MIN<int32_t>((dest_b + src_b + 128) >> 8, 255);
+					out_a = MIN<int32_t>((dest_a + src_a + 128) >> 8, 255);
+				}
+				else
+				{
+					out_r = (dest_r + src_r + 128) >> 8;
+					out_g = (dest_g + src_g + 128) >> 8;
+					out_b = (dest_b + src_b + 128) >> 8;
+					out_a = (dest_a + src_a + 128) >> 8;
+				}
 			}
-			else if (ModeT::BlendOp == STYLEOP_Sub)
+			else if (ModeT::BlendOp == STYLEOP_RevSub)
 			{
-				out_r = MAX<int32_t>(static_cast<int16_t>(dest_r - src_r + 128) >> 8, 0);
-				out_g = MAX<int32_t>(static_cast<int16_t>(dest_g - src_g + 128) >> 8, 0);
-				out_b = MAX<int32_t>(static_cast<int16_t>(dest_b - src_b + 128) >> 8, 0);
-				out_a = MAX<int32_t>(static_cast<int16_t>(dest_a - src_a + 128) >> 8, 0);
+				out_r = MAX<int32_t>(static_cast<int32_t>(dest_r - src_r + 128) >> 8, 0);
+				out_g = MAX<int32_t>(static_cast<int32_t>(dest_g - src_g + 128) >> 8, 0);
+				out_b = MAX<int32_t>(static_cast<int32_t>(dest_b - src_b + 128) >> 8, 0);
+				out_a = MAX<int32_t>(static_cast<int32_t>(dest_a - src_a + 128) >> 8, 0);
 			}
-			else //if (ModeT::BlendOp == STYLEOP_RevSub)
+			else //if (ModeT::BlendOp == STYLEOP_Sub)
 			{
-				out_r = MAX<int32_t>(static_cast<int16_t>(src_r - dest_r + 128) >> 8, 0);
-				out_g = MAX<int32_t>(static_cast<int16_t>(src_g - dest_g + 128) >> 8, 0);
-				out_b = MAX<int32_t>(static_cast<int16_t>(src_b - dest_b + 128) >> 8, 0);
-				out_a = MAX<int32_t>(static_cast<int16_t>(src_a - dest_a + 128) >> 8, 0);
+				out_r = MAX<int32_t>(static_cast<int32_t>(src_r - dest_r + 128) >> 8, 0);
+				out_g = MAX<int32_t>(static_cast<int32_t>(src_g - dest_g + 128) >> 8, 0);
+				out_b = MAX<int32_t>(static_cast<int32_t>(src_b - dest_b + 128) >> 8, 0);
+				out_a = MAX<int32_t>(static_cast<int32_t>(src_a - dest_a + 128) >> 8, 0);
 			}
 			return MAKEARGB(out_a, out_r, out_g, out_b);
 		}
@@ -513,6 +545,7 @@ void ScreenBlockDrawer32<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 
 	Shader.SkycapColor = args->uniforms->Color();
 	Shader.FillColor = args->uniforms->Color();
+	Shader.Alpha = args->uniforms->SrcAlpha();
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();

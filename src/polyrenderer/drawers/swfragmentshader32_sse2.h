@@ -76,6 +76,7 @@ public:
 	__m128i DynLightColor;
 	__m128i SkycapColor;
 	__m128i FillColor;
+	__m128i Alpha;
 
 	// In variables
 	__m128 GradW;
@@ -258,6 +259,13 @@ void SWFragmentShaderSSE2<ModeT>::Run()
 			fg = _mm_or_si128(_mm_andnot_si128(rgbmask, fg), _mm_and_si128(rgbmask, FillColor));
 	}
 
+	if (!(ModeT::Flags & STYLEF_Alpha1))
+	{
+		__m128i a = _mm_srli_epi32(fg, 24);
+		a = _mm_srli_epi32(_mm_mullo_epi16(a, Alpha), 8);
+		fg = _mm_or_si128(_mm_and_si128(fg, _mm_set1_epi32(0x00ffffff)), _mm_slli_epi32(a, 24));
+	}
+
 	if (ModeT::SWFlags & SWSTYLEF_Skycap)
 	{
 		__m128i v = _mm_cvtps_epi32(_mm_mul_ps(TexCoord.y, _mm_set1_ps(1 << 24)));
@@ -428,14 +436,14 @@ __m128i ScreenBlockDrawerSSE2<ModeT>::Blend(uint32_t *destptr, __m128i src)
 			__m128i out = _mm_adds_epu8(dest, src);
 			return out;
 		}
-		else if (ModeT::BlendOp == STYLEOP_Sub)
+		else if (ModeT::BlendOp == STYLEOP_RevSub)
 		{
 			__m128i dest = _mm_loadu_si128((__m128i*)destptr);
 			__m128i src = _mm_loadu_si128((const __m128i*)Shader.FragColor);
 			__m128i out = _mm_subs_epu8(dest, src);
 			return out;
 		}
-		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		else //if (ModeT::BlendOp == STYLEOP_Sub)
 		{
 			__m128i dest = _mm_loadu_si128((__m128i*)destptr);
 			__m128i src = _mm_loadu_si128((const __m128i*)Shader.FragColor);
@@ -465,34 +473,45 @@ __m128i ScreenBlockDrawerSSE2<ModeT>::Blend(uint32_t *destptr, __m128i src)
 		}
 		sfactorlo = _mm_add_epi16(sfactorlo, _mm_srli_epi16(sfactorlo, 7)); // 255 -> 256
 		sfactorhi = _mm_add_epi16(sfactorhi, _mm_srli_epi16(sfactorhi, 7)); // 255 -> 256
-
-		__m128i dfactorlo = _mm_sub_epi16(_mm_set1_epi16(256), sfactorlo);
-		__m128i dfactorhi = _mm_sub_epi16(_mm_set1_epi16(256), sfactorhi);
-
-		destlo = _mm_mullo_epi16(destlo, dfactorlo);
-		desthi = _mm_mullo_epi16(desthi, dfactorhi);
 		srclo = _mm_mullo_epi16(srclo, sfactorlo);
 		srchi = _mm_mullo_epi16(srchi, sfactorhi);
+
+		if (ModeT::BlendDest == STYLEALPHA_One)
+		{
+			srclo = _mm_srli_epi16(srclo, 1);
+			srchi = _mm_srli_epi16(srchi, 1);
+			destlo = _mm_slli_epi16(destlo, 7);
+			desthi = _mm_slli_epi16(desthi, 7);
+		}
+		else
+		{
+			__m128i dfactorlo = _mm_sub_epi16(_mm_set1_epi16(256), sfactorlo);
+			__m128i dfactorhi = _mm_sub_epi16(_mm_set1_epi16(256), sfactorhi);
+			srclo = _mm_srli_epi16(srclo, 1);
+			srchi = _mm_srli_epi16(srchi, 1);
+			destlo = _mm_srli_epi16(_mm_mullo_epi16(destlo, dfactorlo), 1);
+			desthi = _mm_srli_epi16(_mm_mullo_epi16(desthi, dfactorhi), 1);
+		}
 
 		__m128i outlo, outhi;
 		if (ModeT::BlendOp == STYLEOP_Add)
 		{
-			outlo = _mm_add_epi16(destlo, srclo);
-			outhi = _mm_add_epi16(desthi, srchi);
+			outlo = _mm_adds_epi16(destlo, srclo);
+			outhi = _mm_adds_epi16(desthi, srchi);
 		}
-		else if (ModeT::BlendOp == STYLEOP_Sub)
+		else if (ModeT::BlendOp == STYLEOP_RevSub)
 		{
-			outlo = _mm_sub_epi16(destlo, srclo);
-			outhi = _mm_sub_epi16(desthi, srchi);
+			outlo = _mm_subs_epi16(destlo, srclo);
+			outhi = _mm_subs_epi16(desthi, srchi);
 		}
-		else //if (ModeT::BlendOp == STYLEOP_RevSub)
+		else //if (ModeT::BlendOp == STYLEOP_Sub)
 		{
-			outlo = _mm_sub_epi16(srclo, destlo);
-			outhi = _mm_sub_epi16(srchi, desthi);
+			outlo = _mm_subs_epi16(srclo, destlo);
+			outhi = _mm_subs_epi16(srchi, desthi);
 		}
 
-		outlo = _mm_srli_epi16(_mm_add_epi16(outlo, _mm_set1_epi16(128)), 8);
-		outhi = _mm_srli_epi16(_mm_add_epi16(outhi, _mm_set1_epi16(128)), 8);
+		outlo = _mm_srai_epi16(_mm_adds_epi16(outlo, _mm_set1_epi16(64)), 8);
+		outhi = _mm_srai_epi16(_mm_adds_epi16(outhi, _mm_set1_epi16(64)), 8);
 		return _mm_packus_epi16(outlo, outhi);
 	}
 }
@@ -597,6 +616,7 @@ void ScreenBlockDrawerSSE2<ModeT>::SetUniforms(const TriDrawTriangleArgs *args)
 
 	Shader.FillColor = _mm_set1_epi32(args->uniforms->Color());
 	Shader.SkycapColor = _mm_unpacklo_epi8(Shader.FillColor, _mm_setzero_si128());
+	Shader.Alpha = _mm_set1_epi32(args->uniforms->SrcAlpha());
 
 	Shader.Lights = args->uniforms->Lights();
 	Shader.NumLights = args->uniforms->NumLights();
