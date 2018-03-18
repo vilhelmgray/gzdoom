@@ -510,8 +510,8 @@ __m128i ScreenBlockDrawerSSE2<ModeT>::Blend(uint32_t *destptr, __m128i src)
 			outhi = _mm_subs_epi16(srchi, desthi);
 		}
 
-		outlo = _mm_srai_epi16(_mm_adds_epi16(outlo, _mm_set1_epi16(64)), 8);
-		outhi = _mm_srai_epi16(_mm_adds_epi16(outhi, _mm_set1_epi16(64)), 8);
+		outlo = _mm_srai_epi16(_mm_adds_epi16(outlo, _mm_set1_epi16(64)), 7);
+		outhi = _mm_srai_epi16(_mm_adds_epi16(outhi, _mm_set1_epi16(64)), 7);
 		return _mm_packus_epi16(outlo, outhi);
 	}
 }
