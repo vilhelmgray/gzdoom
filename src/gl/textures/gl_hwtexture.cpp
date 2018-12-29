@@ -114,7 +114,10 @@ unsigned int FHardwareTexture::CreateTexture(unsigned char * buffer, int w, int 
 	rh = GetTexDimension(h);
 	if (glBufferID > 0)
 	{
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		if (d3d11texture)
+			d3d11texture->Unmap();
+		else
+			glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		buffer = nullptr;
 	}
 	else if (!buffer)
@@ -156,10 +159,13 @@ unsigned int FHardwareTexture::CreateTexture(unsigned char * buffer, int w, int 
 		sourcetype = GL_BGRA;
 	}
 	
-	if (!firstCall && glBufferID > 0)
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, rw, rh, sourcetype, GL_UNSIGNED_BYTE, buffer);
-	else
-		glTexImage2D(GL_TEXTURE_2D, 0, texformat, rw, rh, 0, sourcetype, GL_UNSIGNED_BYTE, buffer);
+	if (!d3d11texture)
+	{
+		if (!firstCall && glBufferID > 0)
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, rw, rh, sourcetype, GL_UNSIGNED_BYTE, buffer);
+		else
+			glTexImage2D(GL_TEXTURE_2D, 0, texformat, rw, rh, 0, sourcetype, GL_UNSIGNED_BYTE, buffer);
+	}
 
 	if (deletebuffer && buffer) free(buffer);
 	else if (glBufferID)
@@ -197,12 +203,16 @@ void FHardwareTexture::AllocateBuffer(int w, int h, int texelsize)
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, glBufferID);
 		glBufferData(GL_PIXEL_UNPACK_BUFFER, w*h*texelsize, nullptr, GL_STREAM_DRAW);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+		d3d11texture = GL_D3D11_Texture::Create(&glTexID, w, h, texelsize == 4);
 	}
 }
 
 
 uint8_t *FHardwareTexture::MapBuffer()
 {
+	if (d3d11texture)
+		return (uint8_t*)d3d11texture->Map();
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, glBufferID);
 	return (uint8_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
 }
@@ -214,6 +224,7 @@ uint8_t *FHardwareTexture::MapBuffer()
 //===========================================================================
 FHardwareTexture::~FHardwareTexture() 
 { 
+	d3d11texture.reset();
 	if (glTexID != 0) glDeleteTextures(1, &glTexID);
 	if (glBufferID != 0) glDeleteBuffers(1, &glBufferID);
 }

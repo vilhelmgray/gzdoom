@@ -1049,6 +1049,7 @@ set (PCH_SOURCES
 	gl/system/gl_buffers.cpp
 	gl/textures/gl_hwtexture.cpp
 	gl/textures/gl_samplers.cpp
+	gl/textures/gl_d3d11texture.cpp
 	hwrenderer/data/hw_vertexbuilder.cpp
 	hwrenderer/data/flatvertices.cpp
 	hwrenderer/data/hw_viewpointbuffer.cpp

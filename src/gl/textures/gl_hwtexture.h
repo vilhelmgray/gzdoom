@@ -12,6 +12,7 @@
 #include "tarray.h"
 #include "gl_load/gl_interface.h"
 #include "hwrenderer/textures/hw_ihwtexture.h"
+#include "gl_d3d11texture.h"
 
 class FCanvasTexture;
 class AActor;
@@ -42,6 +43,7 @@ private:
 	unsigned int glBufferID = 0;
 	int glTextureBytes = 4;
 	bool mipmapped = false;
+	std::unique_ptr<GL_D3D11_Texture> d3d11texture;
 
 	int GetDepthBuffer(int w, int h);
 
